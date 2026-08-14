@@ -1,4 +1,4 @@
-# react-list-hooks
+# @yassine/react-list-hooks
 
 A lightweight, zero-dependency (peer React only) collection of React hooks for managing list state — pagination, sorting, and filtering. Each hook is designed to be composable, type-safe, and fully generic so you can drop them onto any array of data.
 
@@ -40,11 +40,11 @@ A lightweight, zero-dependency (peer React only) collection of React hooks for m
 ## Installation
 
 ```bash
-npm install react-list-hooks
+npm install @yassine/react-list-hooks
 # or
-yarn add react-list-hooks
+yarn add @yassine/react-list-hooks
 # or
-bun add react-list-hooks
+bun add @yassine/react-list-hooks
 ```
 
 Requires React >= 18 as a peer dependency.
@@ -72,7 +72,7 @@ All hooks are fully typed with generics and work with any object shape.
 ### Basic Usage
 
 ```tsx
-import { usePaginator } from 'react-list-hooks';
+import { usePaginator } from '@yassine/react-list-hooks';
 
 function ProductList({ products }) {
   const page = usePaginator(products, { pageSize: 20 });
@@ -246,7 +246,7 @@ If `keepOtherParams` is enabled, existing query parameters are preserved in the 
 ### Basic Usage
 
 ```tsx
-import { useSort } from 'react-list-hooks';
+import { useSort } from '@yassine/react-list-hooks';
 
 function UserTable({ users }) {
   const { sortedItems, toggleSort, getSortIndicator } = useSort(users, {
@@ -374,7 +374,7 @@ This gives users an intuitive way to explore data without extra "clear sort" but
 ### Basic Usage
 
 ```tsx
-import { useFilter } from 'react-list-hooks';
+import { useFilter } from '@yassine/react-list-hooks';
 
 function ProductList({ products }) {
   const { filteredItems, query, setQuery, filters, setFilter, clearAll } = useFilter(products, {
@@ -518,7 +518,7 @@ Custom filters receive the item and the filter value, and return `true` to keep 
 The three hooks are designed to work together in a pipeline: **filter → sort → paginate**. Because each hook is pure and memoized, you can chain them with minimal overhead:
 
 ```tsx
-import { usePaginator, useSort, useFilter } from 'react-list-hooks';
+import { usePaginator, useSort, useFilter } from '@yassine/react-list-hooks';
 
 function DataTable({ data }) {
   // 1. Filter first (reduces the dataset)
@@ -636,7 +636,7 @@ import type {
   UseFilterReturn,
   SortDirection,
   UrlSyncOptions,
-} from 'react-list-hooks';
+} from '@yassine/react-list-hooks';
 ```
 
 ---
