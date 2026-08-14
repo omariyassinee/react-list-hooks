@@ -3,9 +3,17 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { UseFilterOptions, UseFilterReturn } from './types';
 
 function isMatch(itemVal: unknown, filterVal: unknown): boolean {
-	if (Object.is(itemVal, filterVal)) return true;
+	if (Object.is(itemVal, filterVal) || itemVal === filterVal) return true;
 	if (itemVal instanceof Date && filterVal instanceof Date) {
 		return itemVal.getTime() === filterVal.getTime();
+	}
+	if (itemVal instanceof Date && (typeof filterVal === 'string' || typeof filterVal === 'number')) {
+		const parsed = new Date(filterVal).getTime();
+		if (!Number.isNaN(parsed)) return itemVal.getTime() === parsed;
+	}
+	if (filterVal instanceof Date && (typeof itemVal === 'string' || typeof itemVal === 'number')) {
+		const parsed = new Date(itemVal).getTime();
+		if (!Number.isNaN(parsed)) return parsed === filterVal.getTime();
 	}
 	return false;
 }
@@ -51,13 +59,15 @@ export function useFilter<T>(items: T[], options?: UseFilterOptions<T>): UseFilt
 		setFilters({});
 	}, []);
 
-	// Compute search fields: fallback to all fields with string/number values across items
+	// Compute search fields: fallback to sample of items with string/number values across items
 	const resolvedSearchFields = useMemo<Array<keyof T>>(() => {
 		if (searchFieldsRef.current) return searchFieldsRef.current;
 		if (items.length === 0) return [];
 
 		const fieldSet = new Set<keyof T>();
-		for (const item of items) {
+		const sampleSize = Math.min(items.length, 20);
+		for (let i = 0; i < sampleSize; i++) {
+			const item = items[i];
 			if (item && typeof item === 'object') {
 				for (const key of Object.keys(item)) {
 					const val = (item as Record<string, unknown>)[key];

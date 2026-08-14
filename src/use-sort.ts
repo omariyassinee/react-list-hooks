@@ -26,6 +26,36 @@ function compareValues(valueA: unknown, valueB: unknown, directionMultiplier: nu
 		return (valueA - valueB) * directionMultiplier;
 	}
 
+	if (typeof valueA === 'bigint' || typeof valueB === 'bigint') {
+		if (typeof valueA === 'bigint' && typeof valueB === 'bigint') {
+			if (valueA < valueB) return -1 * directionMultiplier;
+			if (valueA > valueB) return 1 * directionMultiplier;
+			return 0;
+		}
+		if (typeof valueA === 'bigint' && typeof valueB === 'number') {
+			if (Number.isNaN(valueB)) return -1;
+			const numA = Number(valueA);
+			if (numA < valueB) return -1 * directionMultiplier;
+			if (numA > valueB) return 1 * directionMultiplier;
+			return 0;
+		}
+		if (typeof valueA === 'number' && typeof valueB === 'bigint') {
+			if (Number.isNaN(valueA)) return 1;
+			const numB = Number(valueB);
+			if (valueA < numB) return -1 * directionMultiplier;
+			if (valueA > numB) return 1 * directionMultiplier;
+			return 0;
+		}
+		return String(valueA).localeCompare(String(valueB)) * directionMultiplier;
+	}
+
+	if (typeof valueA === 'function' || typeof valueB === 'function') {
+		if (typeof valueA === 'function' && typeof valueB === 'function') {
+			return (valueA.name || '').localeCompare(valueB.name || '') * directionMultiplier;
+		}
+		return typeof valueA === 'function' ? 1 : -1;
+	}
+
 	if (typeof valueA === 'symbol' && typeof valueB === 'symbol') {
 		return (valueA.description ?? '').localeCompare(valueB.description ?? '') * directionMultiplier;
 	}

@@ -82,8 +82,7 @@ export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UseP
 
 	// Initialize currentPage (read from URL if enabled, clamped to valid range)
 	const [currentPage, setCurrentPage] = useState(() => {
-		const initialSize = getInitialPageSize(options, isUrlSyncEnabled, pageSizeParam);
-		const maxPage = computeTotalPages(items.length, initialSize);
+		const maxPage = computeTotalPages(items.length, pageSize);
 		let initial = options?.initialPage ?? 1;
 		if (isUrlSyncEnabled) {
 			const fromUrl = getUrlParam(pageParam);
@@ -188,9 +187,7 @@ export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UseP
 				const ps = targetPageSize !== undefined ? sanitizePageSize(targetPageSize, pageSize) : pageSize;
 
 				searchParams.set(pageParam, String(p));
-				if (syncPageSize) {
-					searchParams.set(pageSizeParam, String(ps));
-				}
+				searchParams.set(pageSizeParam, String(ps));
 				const qs = searchParams.toString();
 				return `${pathname}${qs ? `?${qs}` : ''}${hash}`;
 			} catch {

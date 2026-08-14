@@ -235,4 +235,34 @@ describe('useSort', () => {
 		expect(result.current.sortDirection).toBeNull();
 		expect(result.current.sortedItems).toEqual(mockUsers);
 	});
+
+	it('sorts BigInt and mixed BigInt/Number values without throwing TypeError', () => {
+		const items = [
+			{ id: 1, val: 30n },
+			{ id: 2, val: 10 },
+			{ id: 3, val: 20n },
+		];
+
+		const { result } = renderHook(() => useSort(items));
+
+		act(() => result.current.setSort('val', 'asc'));
+		expect(result.current.sortedItems.map((i) => i.id)).toEqual([2, 3, 1]);
+
+		act(() => result.current.setSort('val', 'desc'));
+		expect(result.current.sortedItems.map((i) => i.id)).toEqual([1, 3, 2]);
+	});
+
+	it('sorts function values deterministically by function name', () => {
+		function alpha() {}
+		function beta() {}
+		const items = [
+			{ id: 1, fn: beta },
+			{ id: 2, fn: alpha },
+		];
+
+		const { result } = renderHook(() => useSort(items));
+
+		act(() => result.current.setSort('fn', 'asc'));
+		expect(result.current.sortedItems.map((i) => i.id)).toEqual([2, 1]);
+	});
 });

@@ -193,7 +193,24 @@ describe('useFilter', () => {
 		act(() => result.current.setFilter('val', NaN));
 		expect(result.current.filteredItems.map((i) => i.id)).toEqual([1, 3]);
 
+		act(() => result.current.clearFilter('val'));
 		act(() => result.current.setFilter('date', new Date('2023-01-01')));
+		expect(result.current.filteredItems.map((i) => i.id)).toEqual([1]);
+
+		// Test date string filter matching Date instance
+		act(() => result.current.setFilter('date', '2023-05-01'));
+		expect(result.current.filteredItems.map((i) => i.id)).toEqual([2, 3]);
+	});
+
+	it('matches -0 and 0 symmetrically in exact filter matching', () => {
+		const itemsWithZeros = [
+			{ id: 1, count: 0 },
+			{ id: 2, count: 5 },
+		];
+
+		const { result } = renderHook(() => useFilter(itemsWithZeros));
+
+		act(() => result.current.setFilter('count', -0));
 		expect(result.current.filteredItems.map((i) => i.id)).toEqual([1]);
 	});
 });

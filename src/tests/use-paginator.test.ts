@@ -416,5 +416,14 @@ describe('usePaginator', () => {
 			expect(result.current.getShareableUrl(-5, 0)).toBe('/?page=1&pageSize=5');
 			expect(result.current.getShareableUrl(99, -10)).toBe('/?page=4&pageSize=5');
 		});
+
+		it('always includes pageSize in getShareableUrl to ensure shareable links are self-contained', () => {
+			window.history.replaceState({}, '', '/');
+			const { result } = renderHook(() =>
+				usePaginator(items(50), { pageSize: 10, urlSync: { enabled: true, syncPageSize: false } }),
+			);
+			expect(result.current.getShareableUrl(2)).toBe('/?page=2&pageSize=10');
+			expect(result.current.getShareableUrl(2, 25)).toBe('/?page=2&pageSize=25');
+		});
 	});
 });
