@@ -1,6 +1,7 @@
 export { usePaginator } from './use-paginator';
-export { useSort } from './use-sort';
 export { useFilter } from './use-filter';
+export { useSort } from './use-sort';
+
 export type {
 	UsePaginatorOptions,
 	UsePaginatorReturn,

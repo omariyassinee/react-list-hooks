@@ -10,12 +10,13 @@
 		"jsx": "react-jsx",
 		"allowJs": true,
 		"types": ["bun"],
+		"rootDir": "./src",
 
 		// Bundler mode
 		"moduleResolution": "bundler",
-		"allowImportingTsExtensions": true,
+		"allowImportingTsExtensions": false,
 		"verbatimModuleSyntax": true,
-		"noEmit": true,
+		"noEmit": false,
 
 		// Best practices
 		"strict": true,
