@@ -225,9 +225,7 @@ describe('usePaginator', () => {
 	describe('urlSync', () => {
 		it('reads initial page and pageSize from URL when urlSync: true', () => {
 			window.history.replaceState({}, '', '?page=2&pageSize=5');
-			const { result } = renderHook(() =>
-				usePaginator(items(20), { pageSize: 10, urlSync: true }),
-			);
+			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 10, urlSync: true }));
 			expect(result.current.isUrlSyncEnabled).toBe(true);
 			expect(result.current.currentPage).toBe(2);
 			expect(result.current.pageSize).toBe(5);
@@ -236,9 +234,7 @@ describe('usePaginator', () => {
 
 		it('updates window.location.search when navigating with urlSync: true', () => {
 			window.history.replaceState({}, '', '/');
-			const { result } = renderHook(() =>
-				usePaginator(items(30), { pageSize: 10, urlSync: true }),
-			);
+			const { result } = renderHook(() => usePaginator(items(30), { pageSize: 10, urlSync: true }));
 
 			act(() => result.current.goToPage(3));
 			expect(window.location.search).toBe('?page=3&pageSize=10');
@@ -270,9 +266,7 @@ describe('usePaginator', () => {
 
 		it('preserves existing non-pagination query params when keepOtherParams: true', () => {
 			window.history.replaceState({}, '', '?search=react&category=tech');
-			const { result } = renderHook(() =>
-				usePaginator(items(20), { pageSize: 5, urlSync: true }),
-			);
+			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 5, urlSync: true }));
 
 			act(() => result.current.goToPage(2));
 			const search = new URLSearchParams(window.location.search);
@@ -287,7 +281,10 @@ describe('usePaginator', () => {
 		it('generates shareable URLs via getShareableUrl helper', () => {
 			window.history.replaceState({}, '', '/products');
 			const { result } = renderHook(() =>
-				usePaginator(items(50), { pageSize: 10, urlSync: { enabled: true, pageParam: 'p', pageSizeParam: 's' } }),
+				usePaginator(items(50), {
+					pageSize: 10,
+					urlSync: { enabled: true, pageParam: 'p', pageSizeParam: 's' },
+				}),
 			);
 
 			const page3Url = result.current.getShareableUrl(3);
@@ -403,7 +400,21 @@ describe('usePaginator', () => {
 			expect(result.current.currentPage).toBe(1);
 			expect([...result.current]).toEqual([1, 2, 3, 4, 5]);
 		});
+
+		it('correctly initializes currentPage when pageSize is also supplied in URL', () => {
+			window.history.replaceState({}, '', '?page=4&pageSize=5');
+			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 10, urlSync: true }));
+			expect(result.current.currentPage).toBe(4);
+			expect(result.current.pageSize).toBe(5);
+			expect(result.current.totalPages).toBe(4);
+			window.history.replaceState({}, '', '/');
+		});
+
+		it('clamps and sanitizes targetPage and targetPageSize in getShareableUrl', () => {
+			window.history.replaceState({}, '', '/');
+			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 5 }));
+			expect(result.current.getShareableUrl(-5, 0)).toBe('/?page=1&pageSize=5');
+			expect(result.current.getShareableUrl(99, -10)).toBe('/?page=4&pageSize=5');
+		});
 	});
 });
-
-

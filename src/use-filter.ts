@@ -2,6 +2,14 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 import type { UseFilterOptions, UseFilterReturn } from './types';
 
+function isMatch(itemVal: unknown, filterVal: unknown): boolean {
+	if (Object.is(itemVal, filterVal)) return true;
+	if (itemVal instanceof Date && filterVal instanceof Date) {
+		return itemVal.getTime() === filterVal.getTime();
+	}
+	return false;
+}
+
 export function useFilter<T>(items: T[], options?: UseFilterOptions<T>): UseFilterReturn<T> {
 	const customFiltersRef = useRef(options?.customFilters);
 	customFiltersRef.current = options?.customFilters;
@@ -52,7 +60,7 @@ export function useFilter<T>(items: T[], options?: UseFilterOptions<T>): UseFilt
 		for (const item of items) {
 			if (item && typeof item === 'object') {
 				for (const key of Object.keys(item)) {
-					const val = (item as Record<string, any>)[key];
+					const val = (item as Record<string, unknown>)[key];
 					if (val !== null && val !== undefined && (typeof val === 'string' || typeof val === 'number')) {
 						fieldSet.add(key as keyof T);
 					}
@@ -98,7 +106,7 @@ export function useFilter<T>(items: T[], options?: UseFilterOptions<T>): UseFilt
 
 				// Default exact matching
 				const itemVal = item[key];
-				if (itemVal !== filterVal) {
+				if (!isMatch(itemVal, filterVal)) {
 					return false;
 				}
 			}
@@ -107,7 +115,6 @@ export function useFilter<T>(items: T[], options?: UseFilterOptions<T>): UseFilt
 		});
 	}, [items, query, filters, resolvedSearchFields]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: <!-->
 	return useMemo(
 		() => ({
 			filteredItems,

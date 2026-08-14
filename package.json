@@ -1,15 +1,51 @@
 {
 	"name": "@omariyassine/react-list-hooks",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "A generic React hook for paginating arrays with full navigation controls",
 	"type": "module",
+	"main": "./dist/index.cjs",
 	"module": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"sideEffects": false,
 	"exports": {
 		".": {
 			"import": {
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
+		},
+		"./use-paginator": {
+			"import": {
+				"types": "./dist/use-paginator.d.ts",
+				"default": "./dist/use-paginator.js"
+			},
+			"require": {
+				"types": "./dist/use-paginator.d.cts",
+				"default": "./dist/use-paginator.cjs"
+			}
+		},
+		"./use-filter": {
+			"import": {
+				"types": "./dist/use-filter.d.ts",
+				"default": "./dist/use-filter.js"
+			},
+			"require": {
+				"types": "./dist/use-filter.d.cts",
+				"default": "./dist/use-filter.cjs"
+			}
+		},
+		"./use-sort": {
+			"import": {
+				"types": "./dist/use-sort.d.ts",
+				"default": "./dist/use-sort.js"
+			},
+			"require": {
+				"types": "./dist/use-sort.d.cts",
+				"default": "./dist/use-sort.cjs"
 			}
 		}
 	},

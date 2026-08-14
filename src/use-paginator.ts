@@ -33,10 +33,18 @@ function getUrlParam(key: string): number | null {
 	}
 }
 
-export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UsePaginatorReturn<T> {
-	const itemsRef = useRef(items);
-	itemsRef.current = items;
+function getInitialPageSize(
+	options?: UsePaginatorOptions,
+	isUrlSyncEnabled?: boolean,
+	pageSizeParam: string = 'pageSize',
+): number {
+	const defaultSize = sanitizePageSize(options?.pageSize, DEFAULT_PAGE_SIZE);
+	if (!isUrlSyncEnabled) return defaultSize;
+	const fromUrl = getUrlParam(pageSizeParam);
+	return fromUrl !== null ? sanitizePageSize(fromUrl, defaultSize) : defaultSize;
+}
 
+export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UsePaginatorReturn<T> {
 	const optionsRef = useRef(options);
 	optionsRef.current = options;
 
@@ -51,12 +59,9 @@ export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UseP
 	const keepOtherParams = urlSyncConfig.keepOtherParams ?? true;
 
 	// Initialize pageSize (read from URL if enabled)
-	const [pageSize, setPageSizeState] = useState(() => {
-		const defaultSize = sanitizePageSize(options?.pageSize, DEFAULT_PAGE_SIZE);
-		if (!isUrlSyncEnabled) return defaultSize;
-		const fromUrl = getUrlParam(pageSizeParam);
-		return fromUrl !== null ? sanitizePageSize(fromUrl, defaultSize) : defaultSize;
-	});
+	const [pageSize, setPageSizeState] = useState(() =>
+		getInitialPageSize(options, isUrlSyncEnabled, pageSizeParam),
+	);
 
 	// Sync pageSize when options.pageSize prop updates dynamically
 	const prevPageSizePropRef = useRef(options?.pageSize);
@@ -77,7 +82,7 @@ export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UseP
 
 	// Initialize currentPage (read from URL if enabled, clamped to valid range)
 	const [currentPage, setCurrentPage] = useState(() => {
-		const initialSize = sanitizePageSize(options?.pageSize, DEFAULT_PAGE_SIZE);
+		const initialSize = getInitialPageSize(options, isUrlSyncEnabled, pageSizeParam);
 		const maxPage = computeTotalPages(items.length, initialSize);
 		let initial = options?.initialPage ?? 1;
 		if (isUrlSyncEnabled) {
@@ -167,23 +172,20 @@ export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UseP
 				let searchParams: URLSearchParams;
 				let pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 				let hash = typeof window !== 'undefined' ? window.location.hash : '';
-
 				if (baseUrl) {
 					const dummyOrigin = 'http://localhost';
 					const urlObj = new URL(baseUrl, dummyOrigin);
 					pathname = urlObj.pathname;
 					hash = urlObj.hash;
-					searchParams = keepOtherParams
-						? new URLSearchParams(urlObj.search)
-						: new URLSearchParams();
+					searchParams = keepOtherParams ? new URLSearchParams(urlObj.search) : new URLSearchParams();
 				} else {
 					searchParams = keepOtherParams
 						? new URLSearchParams(window.location.search)
 						: new URLSearchParams();
 				}
 
-				const p = targetPage ?? effectivePage;
-				const ps = targetPageSize ?? pageSize;
+				const p = targetPage !== undefined ? clamp(targetPage, 1, totalPages) : effectivePage;
+				const ps = targetPageSize !== undefined ? sanitizePageSize(targetPageSize, pageSize) : pageSize;
 
 				searchParams.set(pageParam, String(p));
 				if (syncPageSize) {
@@ -195,7 +197,7 @@ export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UseP
 				return '';
 			}
 		},
-		[effectivePage, pageSize, pageParam, pageSizeParam, syncPageSize, keepOtherParams],
+		[effectivePage, pageSize, totalPages, pageParam, pageSizeParam, syncPageSize, keepOtherParams],
 	);
 
 	// --- Derived data (memoized) ---
@@ -244,45 +246,40 @@ export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UseP
 	const setPageSize = useCallback(
 		(newSize: number) => {
 			const safeSize = sanitizePageSize(newSize, 1);
-			const totalCount = itemsRef.current.length;
 			const firstVisibleIndex = (effectivePage - 1) * pageSize;
-			const newTotalPages = computeTotalPages(totalCount, safeSize);
+			const newTotalPages = computeTotalPages(totalItems, safeSize);
 			const newPage = clamp(Math.floor(firstVisibleIndex / safeSize) + 1, 1, newTotalPages);
 
 			setPageSizeState(safeSize);
 			setCurrentPage(newPage);
 		},
-		[effectivePage, pageSize],
+		[effectivePage, pageSize, totalItems],
 	);
 
 	return useMemo(() => {
-		const returnArr = [...currentItems] as unknown as UsePaginatorReturn<T>;
-
-		Object.defineProperties(returnArr, {
-			currentPage: { value: effectivePage, enumerable: false, writable: true, configurable: true },
-			totalPages: { value: totalPages, enumerable: false, writable: true, configurable: true },
-			totalItems: { value: totalItems, enumerable: false, writable: true, configurable: true },
-			pageSize: { value: pageSize, enumerable: false, writable: true, configurable: true },
-
-			hasNext: { value: hasNext, enumerable: false, writable: true, configurable: true },
-			hasPrev: { value: hasPrev, enumerable: false, writable: true, configurable: true },
-			isFirstPage: { value: isFirstPage, enumerable: false, writable: true, configurable: true },
-			isLastPage: { value: isLastPage, enumerable: false, writable: true, configurable: true },
-
-			next: { value: next, enumerable: false, writable: true, configurable: true },
-			prev: { value: prev, enumerable: false, writable: true, configurable: true },
-			goToPage: { value: goToPage, enumerable: false, writable: true, configurable: true },
-			goToStart: { value: goToStart, enumerable: false, writable: true, configurable: true },
-			goToEnd: { value: goToEnd, enumerable: false, writable: true, configurable: true },
-
-			setPageSize: { value: setPageSize, enumerable: false, writable: true, configurable: true },
-			pageNumbers: { value: pageNumbers, enumerable: false, writable: true, configurable: true },
-
-			isUrlSyncEnabled: { value: isUrlSyncEnabled, enumerable: false, writable: true, configurable: true },
-			getShareableUrl: { value: getShareableUrl, enumerable: false, writable: true, configurable: true },
-		});
-
-		return returnArr;
+		const returnArr = [...currentItems];
+		for (const [key, value] of Object.entries({
+			currentPage: effectivePage,
+			totalPages,
+			totalItems,
+			pageSize,
+			hasNext,
+			hasPrev,
+			isFirstPage,
+			isLastPage,
+			next,
+			prev,
+			goToPage,
+			goToStart,
+			goToEnd,
+			setPageSize,
+			pageNumbers,
+			isUrlSyncEnabled,
+			getShareableUrl,
+		})) {
+			Object.defineProperty(returnArr, key, { value, writable: true, configurable: true });
+		}
+		return returnArr as unknown as UsePaginatorReturn<T>;
 	}, [
 		currentItems,
 		effectivePage,
