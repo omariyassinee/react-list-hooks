@@ -96,18 +96,21 @@ export interface UseSortReturn<T> {
 	getSortIndicator: (key: keyof T) => SortDirection | null;
 }
 
-export interface UseFilterOptions<T> {
+export type FilterKey<T> = (keyof T & string) | (string & {});
+
+export interface UseFilterOptions<T, K extends string = FilterKey<T>> {
 	/** Default search query. */
 	initialQuery?: string;
 	/** Default structured filter field values (used on initial mount). */
-	initialFilters?: Partial<Record<keyof T, unknown>>;
-	/** Custom filter/matching predicate functions for specific keys of T. */
-	customFilters?: Partial<Record<keyof T, (item: T, filterValue: unknown) => boolean>>;
+	initialFilters?: Partial<Record<K, unknown>>;
+	/** Custom filter/matching predicate functions for specific keys of T or custom filter keys. */
+	// biome-ignore lint/suspicious/noExplicitAny: custom filter predicate can accept arbitrary filter value
+	customFilters?: Partial<Record<K, (item: T, filterValue: any) => boolean>>;
 	/** Optional custom text search fields. Defaults to all string/number properties of T. */
 	searchFields?: Array<keyof T>;
 }
 
-export interface UseFilterReturn<T> {
+export interface UseFilterReturn<T, K extends string = FilterKey<T>> {
 	/** The filtered array of items matching query and filters. */
 	filteredItems: T[];
 	/** The current global text search query. */
@@ -115,11 +118,11 @@ export interface UseFilterReturn<T> {
 	/** Set the global text search query. */
 	setQuery: (query: string) => void;
 	/** The active structured field filter values. */
-	filters: Partial<Record<keyof T, unknown>>;
-	/** Set a filter value for a specific field of T. */
-	setFilter: (key: keyof T, value: unknown) => void;
-	/** Clear a filter value for a specific field of T. */
-	clearFilter: (key: keyof T) => void;
+	filters: Partial<Record<K, unknown>>;
+	/** Set a filter value for a specific field of T or custom filter key. */
+	setFilter: (key: K, value: unknown) => void;
+	/** Clear a filter value for a specific field of T or custom filter key. */
+	clearFilter: (key: K) => void;
 	/** Clear all field-specific filters (keeps search query). */
 	clearFilters: () => void;
 	/** Reset both search query and all filters. */

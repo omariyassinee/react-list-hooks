@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 
-import type { UseFilterOptions, UseFilterReturn } from './types';
+import type { FilterKey, UseFilterOptions, UseFilterReturn } from './types';
 
 function isMatch(itemVal: unknown, filterVal: unknown): boolean {
 	if (Object.is(itemVal, filterVal) || itemVal === filterVal) return true;
@@ -18,7 +18,10 @@ function isMatch(itemVal: unknown, filterVal: unknown): boolean {
 	return false;
 }
 
-export function useFilter<T>(items: T[], options?: UseFilterOptions<T>): UseFilterReturn<T> {
+export function useFilter<T, K extends string = FilterKey<T>>(
+	items: T[],
+	options?: UseFilterOptions<T, K>,
+): UseFilterReturn<T, K> {
 	const customFiltersRef = useRef(options?.customFilters);
 	customFiltersRef.current = options?.customFilters;
 
@@ -26,9 +29,9 @@ export function useFilter<T>(items: T[], options?: UseFilterOptions<T>): UseFilt
 	searchFieldsRef.current = options?.searchFields;
 
 	const [query, setQuery] = useState(options?.initialQuery ?? '');
-	const [filters, setFilters] = useState<Partial<Record<keyof T, unknown>>>(options?.initialFilters ?? {});
+	const [filters, setFilters] = useState<Partial<Record<K, unknown>>>(options?.initialFilters ?? {});
 
-	const clearFilter = useCallback((key: keyof T) => {
+	const clearFilter = useCallback((key: K) => {
 		setFilters((prev) => {
 			const next = { ...prev };
 			delete next[key];
@@ -37,7 +40,7 @@ export function useFilter<T>(items: T[], options?: UseFilterOptions<T>): UseFilt
 	}, []);
 
 	const setFilter = useCallback(
-		(key: keyof T, value: unknown) => {
+		(key: K, value: unknown) => {
 			if (value === undefined) {
 				clearFilter(key);
 			} else {
@@ -105,7 +108,7 @@ export function useFilter<T>(items: T[], options?: UseFilterOptions<T>): UseFilt
 
 			// 2. Check field-specific filters
 			for (const [filterKey, filterVal] of activeFilterEntries) {
-				const key = filterKey as keyof T;
+				const key = filterKey as K;
 
 				// Custom filter predicate
 				const customFilter = customFiltersRef.current?.[key];
@@ -115,7 +118,7 @@ export function useFilter<T>(items: T[], options?: UseFilterOptions<T>): UseFilt
 				}
 
 				// Default exact matching
-				const itemVal = item[key];
+				const itemVal = (item as Record<string, unknown>)[key];
 				if (!isMatch(itemVal, filterVal)) {
 					return false;
 				}

@@ -9,6 +9,7 @@ export type {
 	SortDirection,
 	UseSortOptions,
 	UseSortReturn,
+	FilterKey,
 	UseFilterOptions,
 	UseFilterReturn,
 } from './types';

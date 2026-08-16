@@ -213,4 +213,49 @@ describe('useFilter', () => {
 		act(() => result.current.setFilter('count', -0));
 		expect(result.current.filteredItems.map((i) => i.id)).toEqual([1]);
 	});
+
+	it('supports synthetic/custom filter keys that do not exist on the item type', () => {
+		interface User {
+			id: number;
+			name: string;
+			email: string;
+			isAdmin: boolean;
+			archived: boolean;
+		}
+
+		const users: User[] = [
+			{ id: 1, name: 'Alice', email: 'alice@example.com', isAdmin: true, archived: false },
+			{ id: 2, name: 'Bob', email: 'bob@example.com', isAdmin: false, archived: false },
+			{ id: 3, name: 'Charlie', email: 'charlie@example.com', isAdmin: false, archived: true },
+		];
+
+		const { result } = renderHook(() =>
+			useFilter(users, {
+				customFilters: {
+					status: (user, statusVal) => {
+						if (statusVal === 'active') return !user.archived;
+						if (statusVal === 'admins') return user.isAdmin && !user.archived;
+						if (statusVal === 'archived') return user.archived;
+						return true;
+					},
+				},
+				initialFilters: { status: 'active' },
+			}),
+		);
+
+		// Initial filter: active (Alice and Bob)
+		expect(result.current.filteredItems.map((u) => u.name)).toEqual(['Alice', 'Bob']);
+
+		// Change to admins
+		act(() => result.current.setFilter('status', 'admins'));
+		expect(result.current.filteredItems.map((u) => u.name)).toEqual(['Alice']);
+
+		// Change to archived
+		act(() => result.current.setFilter('status', 'archived'));
+		expect(result.current.filteredItems.map((u) => u.name)).toEqual(['Charlie']);
+
+		// Clear status filter
+		act(() => result.current.clearFilter('status'));
+		expect(result.current.filteredItems.length).toBe(3);
+	});
 });
