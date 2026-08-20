@@ -8,7 +8,8 @@ A lightweight, zero-dependency (peer React only) collection of React hooks for m
 
 - [Installation](#installation)
 - [Overview](#overview)
-- [`usePaginator`](#usepaginator)
+- [Subpath Imports](#subpath-imports)
+- [`usePaginate`](#usepaginate)
   - [Basic Usage](#basic-usage)
   - [Return Value](#return-value)
   - [Options](#options)
@@ -29,8 +30,9 @@ A lightweight, zero-dependency (peer React only) collection of React hooks for m
   - [Return Value](#return-value-2)
   - [Options](#options-2)
   - [Global Text Search](#global-text-search)
-  - [Field-Specific Filters](#field-specific-filters)
+  - [Field-Specific Filters & Synthetic Filter Keys](#field-specific-filters--synthetic-filter-keys)
   - [Custom Filter Predicates](#custom-filter-predicates)
+  - [Smart Equality & Date Matching](#smart-equality--date-matching)
 - [Composing the Hooks](#composing-the-hooks)
 - [TypeScript](#typescript)
 - [License](#license)
@@ -57,25 +59,41 @@ The package exports three independent hooks that can be used alone or composed t
 
 | Hook | Purpose |
 |------|---------|
-| `usePaginator` | Slice an array into pages, navigate between them, sync state to the URL, and generate shareable links. |
+| `usePaginate` | Slice an array into pages, navigate between them, sync state to the URL, and generate shareable links. |
 | `useSort` | Sort an array by a key with automatic type-aware comparison, custom comparators, and a toggle-friendly API. |
-| `useFilter` | Filter an array by a global text query and/or structured field-level filters with custom predicates. |
+| `useFilter` | Filter an array by a global text query and/or structured field-level filters with custom predicates and synthetic keys. |
 
 All hooks are fully typed with generics and work with any object shape.
 
 ---
 
-## `usePaginator`
+## Subpath Imports
 
-`usePaginator` takes an array and options, and returns a paginated slice along with navigation controls, status flags, and optional URL synchronization.
+In addition to importing from the package root, direct subpath imports are available for individual hooks:
+
+```tsx
+// Root import (all hooks & types)
+import { usePaginate, useSort, useFilter } from '@omariyassine/react-list-hooks';
+
+// Individual subpath imports
+import { usePaginate } from '@omariyassine/react-list-hooks/use-paginate';
+import { useSort } from '@omariyassine/react-list-hooks/use-sort';
+import { useFilter } from '@omariyassine/react-list-hooks/use-filter';
+```
+
+---
+
+## `usePaginate`
+
+`usePaginate` takes an array and options, and returns a paginated slice along with navigation controls, status flags, and optional URL synchronization.
 
 ### Basic Usage
 
 ```tsx
-import { usePaginator } from '@omariyassine/react-list-hooks';
+import { usePaginate } from '@omariyassine/react-list-hooks';
 
 function ProductList({ products }) {
-  const page = usePaginator(products, { pageSize: 20 });
+  const page = usePaginate(products, { pageSize: 20 });
 
   return (
     <div>
@@ -103,14 +121,14 @@ The returned value is an **array-like object**: it spreads and maps like a norma
 
 ### Return Value
 
-The return type `UsePaginatorReturn<T>` extends `Array<T>` and exposes the following properties:
+The return type `UsePaginateReturn<T>` extends `Array<T>` and exposes the following properties:
 
 | Property | Type | Description |
 |----------|------|-------------|
 | `currentPage` | `number` | The current page number (1-indexed). |
 | `totalPages` | `number` | Total number of pages. Always at least 1. |
 | `totalItems` | `number` | Total number of items in the source array. |
-| `pageSize` | `number` | Number of items per page. |
+| `pageSize` | `number` | Current page size. |
 | `hasNext` | `boolean` | Whether a next page exists. |
 | `hasPrev` | `boolean` | Whether a previous page exists. |
 | `isFirstPage` | `boolean` | Whether the current page is the first. |
@@ -125,15 +143,17 @@ The return type `UsePaginatorReturn<T>` extends `Array<T>` and exposes the follo
 | `isUrlSyncEnabled` | `boolean` | Whether URL synchronization is active. |
 | `getShareableUrl` | `(targetPage?, targetPageSize?, baseUrl?) => string` | Generate a URL string with the pagination params applied. |
 
+> **Note on Array Properties**: The extra pagination properties are non-enumerable. Iterating with `for...in`, reading `Object.keys()`, or calling `JSON.stringify(page)` will cleanly serialize only the items of the current page.
+
 ### Options
 
 ```ts
-interface UsePaginatorOptions {
+interface UsePaginateOptions {
   /** Number of items per page. Defaults to 10. */
   pageSize?: number;
-  /** Initial page number (1-indexed). Defaults to 1. */
+  /** Initial page number (1-indexed). Defaults to 1. Clamped to valid range. */
   initialPage?: number;
-  /** URL sync configuration. See below. */
+  /** URL Search Params sync configuration. Can be a boolean flag or UrlSyncOptions object. */
   urlSync?: boolean | UrlSyncOptions;
 }
 ```
@@ -143,7 +163,7 @@ interface UsePaginatorOptions {
 When `urlSync` is enabled, the current page and page size are read from and written to the browser's URL search parameters. This makes pagination state bookmarkable, shareable, and respects the browser back/forward buttons.
 
 ```tsx
-const page = usePaginator(products, {
+const page = usePaginate(products, {
   pageSize: 20,
   urlSync: true, // enables sync with defaults
 });
@@ -152,7 +172,7 @@ const page = usePaginator(products, {
 For fine-grained control, pass an object:
 
 ```tsx
-const page = usePaginator(products, {
+const page = usePaginate(products, {
   urlSync: {
     enabled: true,
     pageParam: 'p',           // default: 'page'
@@ -193,11 +213,13 @@ All navigation functions are stable callbacks (safe to pass directly to event ha
 <button onClick={page.goToEnd}>Last</button>
 ```
 
-Boundary checks are built-in: calling `next()` on the last page is a no-op, and `goToPage` clamps its argument to the valid range.
+Boundary checks are built-in: calling `next()` on the last page is a no-op, and `goToPage` clamps its argument to the valid range `[1, totalPages]`.
 
 ### Page Size Management
 
 `setPageSize` dynamically changes the number of items per page. It is smart about preserving the user's context: when the page size changes, the hook recalculates which page contains the first item that was visible before, so the user doesn't jump to an arbitrary location.
+
+Additionally, if the `options.pageSize` prop changes dynamically, the hook automatically updates the internal page size while preserving position.
 
 ```tsx
 <select
@@ -218,7 +240,7 @@ Boundary checks are built-in: calling `next()` on the last page is a no-op, and 
 // Current page
 const currentUrl = page.getShareableUrl();
 
-// Specific page
+// Specific page (target page clamped to [1, totalPages])
 const page3Url = page.getShareableUrl(3);
 
 // Specific page and size
@@ -233,9 +255,9 @@ If `keepOtherParams` is enabled, existing query parameters are preserved in the 
 ### How It Works Internally
 
 - The hook uses `useState` for `currentPage` and `pageSize`, and `useMemo` for the sliced `currentItems` and `pageNumbers`.
-- Refs (`useRef`) hold the latest `items` and `options` so that stable callbacks (like `setPageSize` and event handlers) always operate on fresh data without needing to be recreated.
-- `useEffect` handles three responsibilities: clamping the page when `totalPages` changes, syncing state to the URL, and listening to `popstate` for back/forward navigation.
-- The return value is constructed with `Object.defineProperties` on a spread copy of `currentItems`, making the result array-iterable while attaching non-enumerable metadata properties.
+- Refs hold the latest `options` and `totalPages` so that stable callbacks always operate on fresh data without unnecessary re-renders.
+- `useEffect` handles clamping the page when `totalPages` changes, syncing state to the URL, and listening to `popstate` for back/forward navigation.
+- The return value is constructed with `Object.defineProperty` on a shallow copy of `currentItems`, creating non-enumerable metadata properties.
 
 ---
 
@@ -295,7 +317,7 @@ interface UseSortReturn<T> {
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `sortedItems` | `T[]` | The array sorted by the current key and direction. If no sort is active, this is the original array reference. |
+| `sortedItems` | `T[]` | The array sorted by the current key and direction. If no sort is active, returns the original array reference. |
 | `sortKey` | `keyof T \| null` | The key currently being sorted by. `null` if no sort is active. |
 | `sortDirection` | `'asc' \| 'desc' \| null` | The current sort direction. `null` if no sort is active. |
 | `setSort` | `(key, direction?) => void` | Explicitly sort by a key. Direction defaults to `'asc'`. |
@@ -306,6 +328,8 @@ interface UseSortReturn<T> {
 ### Options
 
 ```ts
+type SortDirection = 'asc' | 'desc';
+
 interface UseSortOptions<T> {
   /** The initial field/key of T to sort by. */
   initialKey?: keyof T | null;
@@ -318,17 +342,21 @@ interface UseSortOptions<T> {
 
 ### Default Comparator
 
-When no custom comparator is provided for a key, `useSort` uses a built-in comparator that intelligently handles common types:
+When no custom comparator is provided for a key, `useSort` uses a built-in comparator that intelligently handles all JavaScript primitives and data types:
 
 | Type | Comparison Strategy |
 |------|---------------------|
-| `string` | `localeCompare` with `numeric: true` and `sensitivity: 'base'` (so `"item2"` sorts before `"item10"`). |
-| `Date` | Compares timestamps (`getTime()`). |
+| `string` | Natural sort using `localeCompare` with `{ numeric: true, sensitivity: 'base' }` (e.g. `"item2"` sorts before `"item10"`). |
+| `Date` | Compares timestamps via `.getTime()`. |
 | `boolean` | `true` (1) comes after `false` (0). |
-| `number` / others | Standard `<` / `>` comparison. |
-| `null` / `undefined` | Always pushed to the bottom. If both are nullish, they are considered equal. |
+| `number` | Numeric comparison. `NaN` values are stably pushed to the bottom. |
+| `bigint` / mixed | Safely compares `bigint` with `bigint` and mixed `bigint` / `number` without throwing errors. |
+| `function` | Deterministically compared by function `.name`. |
+| `symbol` | Deterministically compared by symbol `.description`. |
+| `object` | Stringified representation comparison. |
+| `null` / `undefined` | **NULLS LAST**: Always placed at the bottom in both `asc` and `desc` directions. |
 
-The original array is never mutated; `useSort` creates a shallow copy with `[...items].sort(...)`.
+The original array is never mutated; `useSort` creates a shallow copy with `[...items].sort(...)` only when sorting is active.
 
 ### Custom Comparators
 
@@ -352,24 +380,22 @@ const { sortedItems } = useSort(employees, {
 });
 ```
 
-Custom comparators receive the full item objects and return a number (`< 0`, `0`, or `> 0`), just like JavaScript's `Array.prototype.sort`.
+Custom comparators receive the full item objects `(a, b)` and return a standard comparison number (`< 0`, `0`, or `> 0`). The hook automatically multiplies the result when switching between `asc` and `desc`.
 
 ### Toggle Sort Cycle
 
 `toggleSort` is designed for clickable table headers. It cycles through three states:
 
-1. **First click** on a new column → sort **ascending**.
+1. **First click** on a column → sort **ascending**.
 2. **Second click** on the same column → sort **descending**.
 3. **Third click** on the same column → **clear** sort (return to original order).
-4. **Fourth click** → back to ascending.
-
-This gives users an intuitive way to explore data without extra "clear sort" buttons.
+4. **Subsequent click** → back to ascending.
 
 ---
 
 ## `useFilter`
 
-`useFilter` filters an array by a global text query (searched across multiple fields) and/or structured field-specific filters. It supports custom filter predicates for advanced matching logic.
+`useFilter` filters an array by a global text query (searched across multiple fields) and/or structured field-specific filters. It supports custom filter predicates and synthetic filter keys for advanced matching logic.
 
 ### Basic Usage
 
@@ -412,13 +438,15 @@ function ProductList({ products }) {
 ### Return Value
 
 ```ts
-interface UseFilterReturn<T> {
+type FilterKey<T> = (keyof T & string) | (string & {});
+
+interface UseFilterReturn<T, K extends string = FilterKey<T>> {
   filteredItems: T[];
   query: string;
   setQuery: (query: string) => void;
-  filters: Partial<Record<keyof T, unknown>>;
-  setFilter: (key: keyof T, value: unknown) => void;
-  clearFilter: (key: keyof T) => void;
+  filters: Partial<Record<K, unknown>>;
+  setFilter: (key: K, value: unknown) => void;
+  clearFilter: (key: K) => void;
   clearFilters: () => void;
   clearAll: () => void;
 }
@@ -426,77 +454,78 @@ interface UseFilterReturn<T> {
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `filteredItems` | `T[]` | The array containing only items that match the query and all active filters. |
+| `filteredItems` | `T[]` | The array containing only items that match the query and all active filters. If no filters are active, returns the original array reference. |
 | `query` | `string` | The current global text search query. |
 | `setQuery` | `(query: string) => void` | Update the global search query. |
-| `filters` | `Partial<Record<keyof T, unknown>>` | The currently active field-specific filter values. |
-| `setFilter` | `(key, value) => void` | Set a filter value for a specific field. Pass `undefined` to clear that filter. |
-| `clearFilter` | `(key) => void` | Remove the filter for a specific field. |
-| `clearFilters` | `() => void` | Remove all field-specific filters (keeps the global query). |
-| `clearAll` | `() => void` | Reset both the global query and all field filters. |
+| `filters` | `Partial<Record<K, unknown>>` | The currently active structured filter values. |
+| `setFilter` | `(key: K, value: unknown) => void` | Set a filter value for a field or custom filter key. Passing `undefined` clears that filter. |
+| `clearFilter` | `(key: K) => void` | Remove the filter for a specific key. |
+| `clearFilters` | `() => void` | Remove all field/structured filters (keeps the global text query). |
+| `clearAll` | `() => void` | Reset both the global query and all filters. |
 
 ### Options
 
 ```ts
-interface UseFilterOptions<T> {
+interface UseFilterOptions<T, K extends string = FilterKey<T>> {
   /** Default search query. */
   initialQuery?: string;
   /** Default structured filter field values (used on initial mount). */
-  initialFilters?: Partial<Record<keyof T, unknown>>;
-  /** Custom filter/matching predicate functions for specific keys of T. */
-  customFilters?: Partial<Record<keyof T, (item: T, filterValue: unknown) => boolean>>;
-  /** Optional custom text search fields. Defaults to all string/number properties of T. */
+  initialFilters?: Partial<Record<K, unknown>>;
+  /** Custom filter/matching predicate functions for specific keys of T or custom filter keys. */
+  customFilters?: Partial<Record<K, (item: T, filterValue: any) => boolean>>;
+  /** Optional custom text search fields. Defaults to all string/number properties discovered across items. */
   searchFields?: Array<keyof T>;
 }
 ```
 
 ### Global Text Search
 
-The global `query` performs a case-insensitive substring search across the configured `searchFields`. If `searchFields` is omitted, the hook automatically discovers all fields on the items that contain `string` or `number` values.
+The global `query` performs a case-insensitive substring search across the configured `searchFields`. If `searchFields` is omitted, the hook automatically inspects a sample of up to 20 items to discover all keys containing `string` or `number` values.
 
 ```tsx
-// Explicit fields
+// Explicit search fields
 useFilter(items, { searchFields: ['title', 'author'] });
 
-// Auto-discover string/number fields
+// Auto-discovered search fields
 useFilter(items);
 ```
 
 The search is **inclusive OR**: an item matches if *any* of the search fields contain the query string.
 
-### Field-Specific Filters
+### Field-Specific Filters & Synthetic Filter Keys
 
-Field filters perform **exact equality** by default. This is useful for dropdowns, toggles, and category filters:
+Field filters perform exact matching by default. You can also use synthetic/custom filter keys that do not exist directly on item properties (e.g. `'priceRange'`, `'createdBetween'`) alongside `customFilters`:
 
 ```tsx
-setFilter('status', 'active');     // only items where item.status === 'active'
-setFilter('category', 'books');    // only items where item.category === 'books'
-setFilter('inStock', true);        // only items where item.inStock === true
+setFilter('status', 'active');     // keyof Product
+setFilter('category', 'books');    // keyof Product
+setFilter('inStock', true);        // keyof Product
+setFilter('priceRange', [20, 100]); // custom/synthetic filter key
 ```
 
-To clear a field filter, pass `undefined`:
+To clear a filter, pass `undefined` or call `clearFilter(key)`:
 
 ```tsx
-setFilter('status', undefined);    // removes the status filter
+setFilter('status', undefined);
 // or
 clearFilter('status');
 ```
 
 ### Custom Filter Predicates
 
-For ranges, partial matches, or complex logic, provide custom filter predicates:
+For ranges, multi-select tags, or complex predicates, provide custom filter functions:
 
 ```tsx
-const { filteredItems } = useFilter(products, {
+const { filteredItems, setFilter } = useFilter(products, {
   customFilters: {
-    // Price range: filter value is [min, max]
-    price: (item, range) => {
+    // Price range predicate
+    priceRange: (item, range) => {
       const [min, max] = range as [number, number];
       return item.price >= min && item.price <= max;
     },
-    // Tags: filter value is a string, item.tags is an array
+    // Tag matching: item.tags is an array, filterValue is a string
     tags: (item, tag) => item.tags.includes(tag as string),
-    // Date range
+    // Date range predicate
     createdAt: (item, range) => {
       const [start, end] = range as [Date, Date];
       return item.createdAt >= start && item.createdAt <= end;
@@ -505,11 +534,15 @@ const { filteredItems } = useFilter(products, {
 });
 
 // Usage
-setFilter('price', [10, 100]);
+setFilter('priceRange', [10, 100]);
 setFilter('tags', 'react');
 ```
 
-Custom filters receive the item and the filter value, and return `true` to keep the item. They override the default exact-match behavior for their key.
+### Smart Equality & Date Matching
+
+Default field filters perform smart equality checks:
+- Compares `Date` objects with `Date` objects, ISO strings, or numeric timestamps.
+- Uses `Object.is` for exact primitive matching (accurately handles `NaN` and signs).
 
 ---
 
@@ -518,7 +551,7 @@ Custom filters receive the item and the filter value, and return `true` to keep 
 The three hooks are designed to work together in a pipeline: **filter → sort → paginate**. Because each hook is pure and memoized, you can chain them with minimal overhead:
 
 ```tsx
-import { usePaginator, useSort, useFilter } from '@omariyassine/react-list-hooks';
+import { usePaginate, useSort, useFilter } from '@omariyassine/react-list-hooks';
 
 function DataTable({ data }) {
   // 1. Filter first (reduces the dataset)
@@ -532,7 +565,7 @@ function DataTable({ data }) {
   });
 
   // 3. Paginate the sorted results
-  const page = usePaginator(sortedItems, {
+  const page = usePaginate(sortedItems, {
     pageSize: 10,
     urlSync: true,
   });
@@ -583,7 +616,7 @@ function DataTable({ data }) {
 }
 ```
 
-Because each hook memoizes its output, React only re-renders downstream consumers when the actual derived data changes.
+Because each hook memoizes its output and preserves reference equality when inputs are unchanged, React only re-renders downstream consumers when the actual derived data changes.
 
 ---
 
@@ -601,7 +634,7 @@ interface User {
 }
 
 // T is inferred as User
-const page = usePaginator(users, { pageSize: 10 });
+const page = usePaginate(users, { pageSize: 10 });
 const { sortedItems } = useSort(users, { initialKey: 'name' });
 const { filteredItems } = useFilter(users, { searchFields: ['name', 'email'] });
 ```
@@ -618,8 +651,13 @@ useSort(users, {
 
 useFilter(users, {
   customFilters: {
-    // TypeScript knows 'item' is User and 'filterValue' is unknown
+    // TypeScript knows 'item' is User and 'filterValue' can be any value
     role: (item, filterValue) => item.role === filterValue,
+    // Custom/synthetic keys are also allowed with full safety
+    createdBetween: (item, range) => {
+      const [start, end] = range as [Date, Date];
+      return item.createdAt >= start && item.createdAt <= end;
+    },
   },
 });
 ```
@@ -628,12 +666,13 @@ All public types are exported from the package entry point:
 
 ```ts
 import type {
-  UsePaginatorOptions,
-  UsePaginatorReturn,
+  UsePaginateOptions,
+  UsePaginateReturn,
   UseSortOptions,
   UseSortReturn,
   UseFilterOptions,
   UseFilterReturn,
+  FilterKey,
   SortDirection,
   UrlSyncOptions,
 } from '@omariyassine/react-list-hooks';
@@ -644,4 +683,3 @@ import type {
 ## License
 
 MIT
-

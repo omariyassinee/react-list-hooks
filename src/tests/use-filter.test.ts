@@ -258,4 +258,29 @@ describe('useFilter', () => {
 		act(() => result.current.clearFilter('status'));
 		expect(result.current.filteredItems.length).toBe(3);
 	});
+
+	it('preserves field autocompletion and prevents key from collapsing to never when ternary/empty initialFilters are passed', () => {
+		interface Patient {
+			id: string;
+			fullName: string;
+			treatmentStatus: 'ongoing' | 'improved' | 'discharged';
+		}
+		const patients: Patient[] = [
+			{ id: '1', fullName: 'John Doe', treatmentStatus: 'ongoing' },
+			{ id: '2', fullName: 'Jane Smith', treatmentStatus: 'discharged' },
+		];
+		const filter = { status: 'ongoing', search: 'John' };
+
+		const { result } = renderHook(() =>
+			useFilter(patients, {
+				initialQuery: filter.search || '',
+				initialFilters: filter.status !== 'all' ? { treatmentStatus: filter.status } : {},
+				searchFields: ['fullName'],
+			}),
+		);
+
+		expect(result.current.filteredItems.length).toBe(1);
+		act(() => result.current.setFilter('treatmentStatus', 'discharged'));
+		expect(result.current.filteredItems.length).toBe(0);
+	});
 });

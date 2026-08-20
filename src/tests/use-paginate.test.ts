@@ -2,18 +2,18 @@ import { describe, it, expect } from 'bun:test';
 
 import { renderHook, act } from '@testing-library/react';
 
-import { usePaginator } from '../use-paginator';
+import { usePaginate } from '../use-paginate';
 
 // Helper to generate a numbered array [1, 2, ..., n]
 function items(n: number): number[] {
 	return Array.from({ length: n }, (_, i) => i + 1);
 }
 
-describe('usePaginator', () => {
+describe('usePaginate', () => {
 	// ─── Empty array ──────────────────────────────────────────────
 	describe('empty array', () => {
 		it('returns totalPages = 1 and empty currentItems', () => {
-			const { result } = renderHook(() => usePaginator([]));
+			const { result } = renderHook(() => usePaginate([]));
 			expect(result.current.totalPages).toBe(1);
 			expect(Array.isArray(result.current)).toBe(true);
 			expect([...result.current]).toEqual([]);
@@ -22,7 +22,7 @@ describe('usePaginator', () => {
 		});
 
 		it('has correct flags on empty array', () => {
-			const { result } = renderHook(() => usePaginator([]));
+			const { result } = renderHook(() => usePaginate([]));
 			expect(result.current.isFirstPage).toBe(true);
 			expect(result.current.isLastPage).toBe(true);
 			expect(result.current.hasNext).toBe(false);
@@ -33,7 +33,7 @@ describe('usePaginator', () => {
 	// ─── Exact multiple of pageSize ───────────────────────────────
 	describe('exact multiple of pageSize', () => {
 		it('slices correctly across pages (10 items, pageSize 5)', () => {
-			const { result } = renderHook(() => usePaginator(items(10), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(10), { pageSize: 5 }));
 			expect(result.current.totalPages).toBe(2);
 			expect([...result.current]).toEqual([1, 2, 3, 4, 5]);
 			expect(result.current.pageNumbers).toEqual([1, 2]);
@@ -47,7 +47,7 @@ describe('usePaginator', () => {
 	// ─── Non-multiple of pageSize ─────────────────────────────────
 	describe('non-multiple of pageSize', () => {
 		it('last page has remaining items (7 items, pageSize 3)', () => {
-			const { result } = renderHook(() => usePaginator(items(7), { pageSize: 3 }));
+			const { result } = renderHook(() => usePaginate(items(7), { pageSize: 3 }));
 			expect(result.current.totalPages).toBe(3);
 			expect(result.current.pageNumbers).toEqual([1, 2, 3]);
 
@@ -61,7 +61,7 @@ describe('usePaginator', () => {
 	// ─── Boundary navigation ──────────────────────────────────────
 	describe('boundary navigation', () => {
 		it('prev() on page 1 is a no-op', () => {
-			const { result } = renderHook(() => usePaginator(items(10), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(10), { pageSize: 5 }));
 			expect(result.current.currentPage).toBe(1);
 
 			act(() => result.current.prev());
@@ -70,7 +70,7 @@ describe('usePaginator', () => {
 		});
 
 		it('next() on last page is a no-op', () => {
-			const { result } = renderHook(() => usePaginator(items(10), { pageSize: 5, initialPage: 2 }));
+			const { result } = renderHook(() => usePaginate(items(10), { pageSize: 5, initialPage: 2 }));
 			expect(result.current.currentPage).toBe(2);
 
 			act(() => result.current.next());
@@ -79,7 +79,7 @@ describe('usePaginator', () => {
 		});
 
 		it('goToStart and goToEnd work correctly', () => {
-			const { result } = renderHook(() => usePaginator(items(30), { pageSize: 10 }));
+			const { result } = renderHook(() => usePaginate(items(30), { pageSize: 10 }));
 
 			act(() => result.current.goToEnd());
 			expect(result.current.currentPage).toBe(3);
@@ -94,19 +94,19 @@ describe('usePaginator', () => {
 	// ─── goToPage clamping ────────────────────────────────────────
 	describe('goToPage clamping', () => {
 		it('clamps negative page to 1', () => {
-			const { result } = renderHook(() => usePaginator(items(10), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(10), { pageSize: 5 }));
 			act(() => result.current.goToPage(-5));
 			expect(result.current.currentPage).toBe(1);
 		});
 
 		it('clamps zero to 1', () => {
-			const { result } = renderHook(() => usePaginator(items(10), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(10), { pageSize: 5 }));
 			act(() => result.current.goToPage(0));
 			expect(result.current.currentPage).toBe(1);
 		});
 
 		it('clamps beyond totalPages to totalPages', () => {
-			const { result } = renderHook(() => usePaginator(items(10), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(10), { pageSize: 5 }));
 			act(() => result.current.goToPage(100));
 			expect(result.current.currentPage).toBe(2);
 		});
@@ -115,7 +115,7 @@ describe('usePaginator', () => {
 	// ─── setPageSize with position preservation ───────────────────
 	describe('setPageSize (position preservation)', () => {
 		it('preserves approximate position when page size changes', () => {
-			const { result } = renderHook(() => usePaginator(items(50), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(50), { pageSize: 5 }));
 
 			// Go to page 3 → first visible item is index 10 (item 11)
 			act(() => result.current.goToPage(3));
@@ -130,7 +130,7 @@ describe('usePaginator', () => {
 		});
 
 		it('clamps to 1 for zero or negative pageSize', () => {
-			const { result } = renderHook(() => usePaginator(items(10), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(10), { pageSize: 5 }));
 
 			act(() => result.current.setPageSize(0));
 			expect(result.current.pageSize).toBe(1);
@@ -143,7 +143,7 @@ describe('usePaginator', () => {
 	// ─── Source array shrinking ───────────────────────────────────
 	describe('source array shrinking', () => {
 		it('clamps currentPage when items shrink', () => {
-			const { result, rerender } = renderHook(({ data }) => usePaginator(data, { pageSize: 5 }), {
+			const { result, rerender } = renderHook(({ data }) => usePaginate(data, { pageSize: 5 }), {
 				initialProps: { data: items(50) },
 			});
 
@@ -161,7 +161,7 @@ describe('usePaginator', () => {
 	// ─── Status flags ─────────────────────────────────────────────
 	describe('status flags', () => {
 		it('reflects correct state on first page', () => {
-			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(20), { pageSize: 5 }));
 			expect(result.current.isFirstPage).toBe(true);
 			expect(result.current.isLastPage).toBe(false);
 			expect(result.current.hasNext).toBe(true);
@@ -169,7 +169,7 @@ describe('usePaginator', () => {
 		});
 
 		it('reflects correct state on middle page', () => {
-			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 5, initialPage: 2 }));
+			const { result } = renderHook(() => usePaginate(items(20), { pageSize: 5, initialPage: 2 }));
 			expect(result.current.isFirstPage).toBe(false);
 			expect(result.current.isLastPage).toBe(false);
 			expect(result.current.hasNext).toBe(true);
@@ -177,7 +177,7 @@ describe('usePaginator', () => {
 		});
 
 		it('reflects correct state on last page', () => {
-			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 5, initialPage: 4 }));
+			const { result } = renderHook(() => usePaginate(items(20), { pageSize: 5, initialPage: 4 }));
 			expect(result.current.isFirstPage).toBe(false);
 			expect(result.current.isLastPage).toBe(true);
 			expect(result.current.hasNext).toBe(false);
@@ -188,12 +188,12 @@ describe('usePaginator', () => {
 	// ─── pageNumbers ──────────────────────────────────────────────
 	describe('pageNumbers', () => {
 		it('generates correct array of page numbers', () => {
-			const { result } = renderHook(() => usePaginator(items(23), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(23), { pageSize: 5 }));
 			expect(result.current.pageNumbers).toEqual([1, 2, 3, 4, 5]);
 		});
 
 		it('returns [1] for single page', () => {
-			const { result } = renderHook(() => usePaginator(items(3), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(3), { pageSize: 5 }));
 			expect(result.current.pageNumbers).toEqual([1]);
 		});
 	});
@@ -201,12 +201,12 @@ describe('usePaginator', () => {
 	// ─── initialPage clamping ─────────────────────────────────────
 	describe('initialPage', () => {
 		it('clamps initialPage that exceeds totalPages', () => {
-			const { result } = renderHook(() => usePaginator(items(10), { pageSize: 5, initialPage: 99 }));
+			const { result } = renderHook(() => usePaginate(items(10), { pageSize: 5, initialPage: 99 }));
 			expect(result.current.currentPage).toBe(2);
 		});
 
 		it('clamps negative initialPage to 1', () => {
-			const { result } = renderHook(() => usePaginator(items(10), { pageSize: 5, initialPage: -1 }));
+			const { result } = renderHook(() => usePaginate(items(10), { pageSize: 5, initialPage: -1 }));
 			expect(result.current.currentPage).toBe(1);
 		});
 	});
@@ -214,7 +214,7 @@ describe('usePaginator', () => {
 	// ─── Default pageSize ─────────────────────────────────────────
 	describe('default pageSize', () => {
 		it('defaults to 10 when no pageSize is provided', () => {
-			const { result } = renderHook(() => usePaginator(items(25)));
+			const { result } = renderHook(() => usePaginate(items(25)));
 			expect(result.current.pageSize).toBe(10);
 			expect(result.current.totalPages).toBe(3);
 			expect([...result.current]).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
@@ -225,7 +225,7 @@ describe('usePaginator', () => {
 	describe('urlSync', () => {
 		it('reads initial page and pageSize from URL when urlSync: true', () => {
 			window.history.replaceState({}, '', '?page=2&pageSize=5');
-			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 10, urlSync: true }));
+			const { result } = renderHook(() => usePaginate(items(20), { pageSize: 10, urlSync: true }));
 			expect(result.current.isUrlSyncEnabled).toBe(true);
 			expect(result.current.currentPage).toBe(2);
 			expect(result.current.pageSize).toBe(5);
@@ -234,7 +234,7 @@ describe('usePaginator', () => {
 
 		it('updates window.location.search when navigating with urlSync: true', () => {
 			window.history.replaceState({}, '', '/');
-			const { result } = renderHook(() => usePaginator(items(30), { pageSize: 10, urlSync: true }));
+			const { result } = renderHook(() => usePaginate(items(30), { pageSize: 10, urlSync: true }));
 
 			act(() => result.current.goToPage(3));
 			expect(window.location.search).toBe('?page=3&pageSize=10');
@@ -248,7 +248,7 @@ describe('usePaginator', () => {
 		it('supports custom pageParam and pageSizeParam names', () => {
 			window.history.replaceState({}, '', '?p=3&limit=5');
 			const { result } = renderHook(() =>
-				usePaginator(items(30), {
+				usePaginate(items(30), {
 					urlSync: {
 						enabled: true,
 						pageParam: 'p',
@@ -266,7 +266,7 @@ describe('usePaginator', () => {
 
 		it('preserves existing non-pagination query params when keepOtherParams: true', () => {
 			window.history.replaceState({}, '', '?search=react&category=tech');
-			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 5, urlSync: true }));
+			const { result } = renderHook(() => usePaginate(items(20), { pageSize: 5, urlSync: true }));
 
 			act(() => result.current.goToPage(2));
 			const search = new URLSearchParams(window.location.search);
@@ -281,7 +281,7 @@ describe('usePaginator', () => {
 		it('generates shareable URLs via getShareableUrl helper', () => {
 			window.history.replaceState({}, '', '/products');
 			const { result } = renderHook(() =>
-				usePaginator(items(50), {
+				usePaginate(items(50), {
 					pageSize: 10,
 					urlSync: { enabled: true, pageParam: 'p', pageSizeParam: 's' },
 				}),
@@ -298,7 +298,7 @@ describe('usePaginator', () => {
 
 		it('preserves referential equality of return object when state does not change', () => {
 			const data = items(20);
-			const { result, rerender } = renderHook(() => usePaginator(data, { pageSize: 5 }));
+			const { result, rerender } = renderHook(() => usePaginate(data, { pageSize: 5 }));
 			const firstReturn = result.current;
 			rerender();
 			const secondReturn = result.current;
@@ -309,7 +309,7 @@ describe('usePaginator', () => {
 	// ─── Non-enumerable return properties ─────────────────────────
 	describe('non-enumerable return properties', () => {
 		it('only enumerates numeric array indices on for...in and Object.keys', () => {
-			const { result } = renderHook(() => usePaginator(items(5), { pageSize: 3 }));
+			const { result } = renderHook(() => usePaginate(items(5), { pageSize: 3 }));
 			const keys = Object.keys(result.current);
 			expect(keys).toEqual(['0', '1', '2']);
 
@@ -321,7 +321,7 @@ describe('usePaginator', () => {
 		});
 
 		it('serializes to standard JSON array without extra metadata keys', () => {
-			const { result } = renderHook(() => usePaginator([10, 20, 30], { pageSize: 2 }));
+			const { result } = renderHook(() => usePaginate([10, 20, 30], { pageSize: 2 }));
 			expect(JSON.stringify(result.current)).toBe('[10,20]');
 		});
 	});
@@ -329,7 +329,7 @@ describe('usePaginator', () => {
 	// ─── Options prop syncing ─────────────────────────────────────
 	describe('options prop syncing', () => {
 		it('syncs pageSize when options.pageSize prop updates dynamically', () => {
-			const { result, rerender } = renderHook(({ size }) => usePaginator(items(20), { pageSize: size }), {
+			const { result, rerender } = renderHook(({ size }) => usePaginate(items(20), { pageSize: size }), {
 				initialProps: { size: 5 },
 			});
 
@@ -345,7 +345,7 @@ describe('usePaginator', () => {
 	describe('popstate missing params reset', () => {
 		it('resets page and pageSize to defaults when popstate occurs without query params', () => {
 			window.history.replaceState({}, '', '?page=3&pageSize=5');
-			const { result } = renderHook(() => usePaginator(items(30), { pageSize: 10, urlSync: true }));
+			const { result } = renderHook(() => usePaginate(items(30), { pageSize: 10, urlSync: true }));
 
 			expect(result.current.currentPage).toBe(3);
 			expect(result.current.pageSize).toBe(5);
@@ -366,7 +366,7 @@ describe('usePaginator', () => {
 	// ─── Custom base URL in getShareableUrl ────────────────────────
 	describe('getShareableUrl base URL parameter', () => {
 		it('supports passing a custom base URL', () => {
-			const { result } = renderHook(() => usePaginator(items(30), { pageSize: 10, urlSync: true }));
+			const { result } = renderHook(() => usePaginate(items(30), { pageSize: 10, urlSync: true }));
 			const customUrl = result.current.getShareableUrl(2, 5, 'https://example.com/catalog?sort=name#section');
 
 			expect(customUrl).toBe('/catalog?sort=name&page=2&pageSize=5#section');
@@ -376,7 +376,7 @@ describe('usePaginator', () => {
 	// ─── Additional Audit Edge Cases ────────────────────────────────
 	describe('audit edge cases', () => {
 		it('handles invalid pageSize inputs like NaN, Infinity, zero and negative numbers gracefully', () => {
-			const { result } = renderHook(() => usePaginator(items(10), { pageSize: NaN }));
+			const { result } = renderHook(() => usePaginate(items(10), { pageSize: NaN }));
 			expect(result.current.pageSize).toBe(10); // Fallback to DEFAULT_PAGE_SIZE
 
 			act(() => result.current.setPageSize(NaN));
@@ -387,7 +387,7 @@ describe('usePaginator', () => {
 		});
 
 		it('immediately returns non-empty slice frame when source items shrink on late page', () => {
-			const { result, rerender } = renderHook(({ data }) => usePaginator(data, { pageSize: 10 }), {
+			const { result, rerender } = renderHook(({ data }) => usePaginate(data, { pageSize: 10 }), {
 				initialProps: { data: items(50) },
 			});
 
@@ -403,7 +403,7 @@ describe('usePaginator', () => {
 
 		it('correctly initializes currentPage when pageSize is also supplied in URL', () => {
 			window.history.replaceState({}, '', '?page=4&pageSize=5');
-			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 10, urlSync: true }));
+			const { result } = renderHook(() => usePaginate(items(20), { pageSize: 10, urlSync: true }));
 			expect(result.current.currentPage).toBe(4);
 			expect(result.current.pageSize).toBe(5);
 			expect(result.current.totalPages).toBe(4);
@@ -412,7 +412,7 @@ describe('usePaginator', () => {
 
 		it('clamps and sanitizes targetPage and targetPageSize in getShareableUrl', () => {
 			window.history.replaceState({}, '', '/');
-			const { result } = renderHook(() => usePaginator(items(20), { pageSize: 5 }));
+			const { result } = renderHook(() => usePaginate(items(20), { pageSize: 5 }));
 			expect(result.current.getShareableUrl(-5, 0)).toBe('/?page=1&pageSize=5');
 			expect(result.current.getShareableUrl(99, -10)).toBe('/?page=4&pageSize=5');
 		});
@@ -420,7 +420,7 @@ describe('usePaginator', () => {
 		it('always includes pageSize in getShareableUrl to ensure shareable links are self-contained', () => {
 			window.history.replaceState({}, '', '/');
 			const { result } = renderHook(() =>
-				usePaginator(items(50), { pageSize: 10, urlSync: { enabled: true, syncPageSize: false } }),
+				usePaginate(items(50), { pageSize: 10, urlSync: { enabled: true, syncPageSize: false } }),
 			);
 			expect(result.current.getShareableUrl(2)).toBe('/?page=2&pageSize=10');
 			expect(result.current.getShareableUrl(2, 25)).toBe('/?page=2&pageSize=25');

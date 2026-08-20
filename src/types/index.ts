@@ -13,7 +13,7 @@ export interface UrlSyncOptions {
 	keepOtherParams?: boolean;
 }
 
-export interface UsePaginatorOptions {
+export interface UsePaginateOptions {
 	/** Number of items per page. Defaults to 10. */
 	pageSize?: number;
 	/** Initial page number (1-indexed). Defaults to 1. Clamped to valid range. */
@@ -22,7 +22,7 @@ export interface UsePaginatorOptions {
 	urlSync?: boolean | UrlSyncOptions;
 }
 
-export interface UsePaginatorReturn<T> extends Array<T> {
+export interface UsePaginateReturn<T> extends Array<T> {
 	// data
 	/** The current page number (1-indexed). */
 	currentPage: number;
@@ -98,19 +98,19 @@ export interface UseSortReturn<T> {
 
 export type FilterKey<T> = (keyof T & string) | (string & {});
 
-export interface UseFilterOptions<T, K extends string = FilterKey<T>> {
+export interface UseFilterOptions<T, K extends string = string> {
 	/** Default search query. */
 	initialQuery?: string;
 	/** Default structured filter field values (used on initial mount). */
-	initialFilters?: Partial<Record<K, unknown>>;
+	initialFilters?: Partial<Record<K | FilterKey<T>, unknown>>;
 	/** Custom filter/matching predicate functions for specific keys of T or custom filter keys. */
 	// biome-ignore lint/suspicious/noExplicitAny: custom filter predicate can accept arbitrary filter value
-	customFilters?: Partial<Record<K, (item: T, filterValue: any) => boolean>>;
+	customFilters?: Partial<Record<K | FilterKey<T>, (item: T, filterValue: any) => boolean>>;
 	/** Optional custom text search fields. Defaults to all string/number properties of T. */
 	searchFields?: Array<keyof T>;
 }
 
-export interface UseFilterReturn<T, K extends string = FilterKey<T>> {
+export interface UseFilterReturn<T, K extends string = string> {
 	/** The filtered array of items matching query and filters. */
 	filteredItems: T[];
 	/** The current global text search query. */
@@ -118,11 +118,11 @@ export interface UseFilterReturn<T, K extends string = FilterKey<T>> {
 	/** Set the global text search query. */
 	setQuery: (query: string) => void;
 	/** The active structured field filter values. */
-	filters: Partial<Record<K, unknown>>;
+	filters: Partial<Record<K | FilterKey<T>, unknown>>;
 	/** Set a filter value for a specific field of T or custom filter key. */
-	setFilter: (key: K, value: unknown) => void;
+	setFilter: (key: K | FilterKey<T>, value: unknown) => void;
 	/** Clear a filter value for a specific field of T or custom filter key. */
-	clearFilter: (key: K) => void;
+	clearFilter: (key: K | FilterKey<T>) => void;
 	/** Clear all field-specific filters (keeps search query). */
 	clearFilters: () => void;
 	/** Reset both search query and all filters. */

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { UrlSyncOptions, UsePaginatorOptions, UsePaginatorReturn } from './types';
+import type { UrlSyncOptions, UsePaginateOptions, UsePaginateReturn } from './types';
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -34,7 +34,7 @@ function getUrlParam(key: string): number | null {
 }
 
 function getInitialPageSize(
-	options?: UsePaginatorOptions,
+	options?: UsePaginateOptions,
 	isUrlSyncEnabled?: boolean,
 	pageSizeParam: string = 'pageSize',
 ): number {
@@ -44,7 +44,7 @@ function getInitialPageSize(
 	return fromUrl !== null ? sanitizePageSize(fromUrl, defaultSize) : defaultSize;
 }
 
-export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UsePaginatorReturn<T> {
+export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePaginateReturn<T> {
 	const optionsRef = useRef(options);
 	optionsRef.current = options;
 
@@ -276,7 +276,7 @@ export function usePaginator<T>(items: T[], options?: UsePaginatorOptions): UseP
 		})) {
 			Object.defineProperty(returnArr, key, { value, writable: true, configurable: true });
 		}
-		return returnArr as unknown as UsePaginatorReturn<T>;
+		return returnArr as unknown as UsePaginateReturn<T>;
 	}, [
 		currentItems,
 		effectivePage,

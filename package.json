@@ -1,6 +1,6 @@
 {
 	"name": "@omariyassine/react-list-hooks",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"description": "A generic React hook for paginating arrays with full navigation controls",
 	"type": "module",
 	"main": "./dist/index.cjs",
@@ -18,14 +18,14 @@
 				"default": "./dist/index.cjs"
 			}
 		},
-		"./use-paginator": {
+		"./use-paginate": {
 			"import": {
-				"types": "./dist/use-paginator.d.ts",
-				"default": "./dist/use-paginator.js"
+				"types": "./dist/use-paginate.d.ts",
+				"default": "./dist/use-paginate.js"
 			},
 			"require": {
-				"types": "./dist/use-paginator.d.cts",
-				"default": "./dist/use-paginator.cjs"
+				"types": "./dist/use-paginate.d.cts",
+				"default": "./dist/use-paginate.cjs"
 			}
 		},
 		"./use-filter": {
@@ -75,8 +75,8 @@
 		"react",
 		"hook",
 		"pagination",
-		"paginator",
-		"usePaginator"
+		"paginate",
+		"usePaginate"
 	],
 	"license": "MIT"
 }

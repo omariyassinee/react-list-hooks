@@ -18,10 +18,11 @@ function isMatch(itemVal: unknown, filterVal: unknown): boolean {
 	return false;
 }
 
-export function useFilter<T, K extends string = FilterKey<T>>(
+export function useFilter<T, K extends string = string>(
 	items: T[],
 	options?: UseFilterOptions<T, K>,
 ): UseFilterReturn<T, K> {
+	type ActualKey = K | FilterKey<T>;
 	const customFiltersRef = useRef(options?.customFilters);
 	customFiltersRef.current = options?.customFilters;
 
@@ -29,9 +30,11 @@ export function useFilter<T, K extends string = FilterKey<T>>(
 	searchFieldsRef.current = options?.searchFields;
 
 	const [query, setQuery] = useState(options?.initialQuery ?? '');
-	const [filters, setFilters] = useState<Partial<Record<K, unknown>>>(options?.initialFilters ?? {});
+	const [filters, setFilters] = useState<Partial<Record<ActualKey, unknown>>>(
+		(options?.initialFilters as Partial<Record<ActualKey, unknown>>) ?? {},
+	);
 
-	const clearFilter = useCallback((key: K) => {
+	const clearFilter = useCallback((key: ActualKey) => {
 		setFilters((prev) => {
 			const next = { ...prev };
 			delete next[key];
@@ -40,7 +43,7 @@ export function useFilter<T, K extends string = FilterKey<T>>(
 	}, []);
 
 	const setFilter = useCallback(
-		(key: K, value: unknown) => {
+		(key: ActualKey, value: unknown) => {
 			if (value === undefined) {
 				clearFilter(key);
 			} else {
