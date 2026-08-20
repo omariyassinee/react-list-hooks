@@ -265,4 +265,137 @@ describe('useSort', () => {
 		act(() => result.current.setSort('fn', 'asc'));
 		expect(result.current.sortedItems.map((i) => i.id)).toEqual([2, 1]);
 	});
+
+	it('maintains getSortIndicator referential stability across sort state changes', () => {
+		const { result } = renderHook(() => useSort(mockUsers));
+		const initialGetSortIndicator = result.current.getSortIndicator;
+
+		act(() => result.current.setSort('name', 'asc'));
+		expect(result.current.getSortIndicator('name')).toBe('asc');
+		expect(result.current.getSortIndicator).toBe(initialGetSortIndicator);
+
+		act(() => result.current.toggleSort('name'));
+		expect(result.current.getSortIndicator('name')).toBe('desc');
+		expect(result.current.getSortIndicator).toBe(initialGetSortIndicator);
+
+		act(() => result.current.clearSort());
+		expect(result.current.getSortIndicator('name')).toBeNull();
+		expect(result.current.getSortIndicator).toBe(initialGetSortIndicator);
+	});
+
+	// ─── urlSync ──────────────────────────────────────────────────────────────
+	describe('urlSync', () => {
+		it('reads initial sortKey and direction from URL search params', () => {
+			window.history.replaceState({}, '', '?sortBy=age&sortDir=desc');
+			const { result } = renderHook(() =>
+				useSort(mockUsers, {
+					urlSync: true,
+				}),
+			);
+
+			expect(result.current.sortKey).toBe('age');
+			expect(result.current.sortDirection).toBe('desc');
+			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
+			window.history.replaceState({}, '', '/');
+		});
+
+		it('updates URL search params when sorting changes and removes params on clearSort', () => {
+			window.history.replaceState({}, '', '/');
+			const { result } = renderHook(() =>
+				useSort(mockUsers, {
+					urlSync: {
+						enabled: true,
+						sortKeyParam: 'sort',
+						directionParam: 'order',
+					},
+				}),
+			);
+
+			act(() => result.current.setSort('name', 'asc'));
+			expect(window.location.search).toContain('sort=name');
+			expect(window.location.search).toContain('order=asc');
+
+			act(() => result.current.clearSort());
+			expect(window.location.search).not.toContain('sort=');
+			expect(window.location.search).not.toContain('order=');
+
+			window.history.replaceState({}, '', '/');
+		});
+
+		it('handles popstate browser back navigation for sorting', () => {
+			window.history.replaceState({}, '', '?sortBy=name&sortDir=asc');
+			const { result } = renderHook(() =>
+				useSort(mockUsers, {
+					urlSync: true,
+				}),
+			);
+
+			expect(result.current.sortKey).toBe('name');
+
+			// Simulate back button navigating to sortBy age desc
+			window.history.replaceState({}, '', '?sortBy=age&sortDir=desc');
+			act(() => {
+				window.dispatchEvent(new window.Event('popstate'));
+			});
+
+			expect(result.current.sortKey).toBe('age');
+			expect(result.current.sortDirection).toBe('desc');
+			window.history.replaceState({}, '', '/');
+		});
+	});
+
+	// ─── Debounce & isSorting ──────────────────────────────────────────────────
+	describe('debounceMs and isSorting', () => {
+		it('delays sorting computation and sets isSorting during debounce interval', async () => {
+			const { result } = renderHook(() =>
+				useSort(mockUsers, {
+					debounceMs: 50,
+				}),
+			);
+
+			expect(result.current.isSorting).toBe(false);
+			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'charlie', 'Bob']);
+
+			// Toggle sort to name asc
+			act(() => result.current.setSort('name', 'asc'));
+			expect(result.current.sortKey).toBe('name');
+			expect(result.current.isSorting).toBe(true);
+			// Still old order before debounce timer expires
+			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'charlie', 'Bob']);
+
+			// Wait for debounce timer
+			await new Promise((r) => setTimeout(r, 70));
+
+			expect(result.current.isSorting).toBe(false);
+			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'Bob', 'charlie']);
+		});
+
+		it('immediately resets isSorting and sortState on clearSort', () => {
+			const { result } = renderHook(() =>
+				useSort(mockUsers, {
+					initialKey: 'name',
+					initialDirection: 'asc',
+					debounceMs: 100,
+				}),
+			);
+
+			act(() => result.current.clearSort());
+			expect(result.current.sortKey).toBeNull();
+			expect(result.current.isSorting).toBe(false);
+		});
+
+		it('supports React 18/19 useTransition option', () => {
+			const { result } = renderHook(() =>
+				useSort(mockUsers, {
+					useTransition: true,
+				}),
+			);
+
+			expect(result.current.isSorting).toBe(false);
+			act(() => result.current.setSort('age', 'desc'));
+			expect(result.current.sortKey).toBe('age');
+			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
+		});
+	});
 });
+

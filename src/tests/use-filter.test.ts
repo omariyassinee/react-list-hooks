@@ -283,4 +283,126 @@ describe('useFilter', () => {
 		act(() => result.current.setFilter('treatmentStatus', 'discharged'));
 		expect(result.current.filteredItems.length).toBe(0);
 	});
+
+	// ─── Debounce & isFiltering ──────────────────────────────────────────────
+	describe('debounceMs and isFiltering', () => {
+		it('delays text filter computation and sets isFiltering during debounce interval', async () => {
+			const { result } = renderHook(() =>
+				useFilter(mockProducts, {
+					debounceMs: 50,
+				}),
+			);
+
+			// Initially synchronous
+			expect(result.current.isFiltering).toBe(false);
+			expect(result.current.filteredItems.length).toBe(3);
+
+			// Update query
+			act(() => result.current.setQuery('HoloLens'));
+			expect(result.current.query).toBe('HoloLens');
+			expect(result.current.isFiltering).toBe(true);
+			// Still returns all 3 items before debounce timer expires
+			expect(result.current.filteredItems.length).toBe(3);
+
+			// Wait for debounce timer
+			await new Promise((r) => setTimeout(r, 70));
+
+			expect(result.current.isFiltering).toBe(false);
+			expect(result.current.filteredItems.length).toBe(1);
+			expect(result.current.filteredItems[0]?.name).toBe('HoloLens Mini');
+		});
+
+		it('immediately resets query and debouncedQuery on clearAll', () => {
+			const { result } = renderHook(() =>
+				useFilter(mockProducts, {
+					initialQuery: 'HoloLens',
+					debounceMs: 100,
+				}),
+			);
+
+			act(() => result.current.clearAll());
+			expect(result.current.query).toBe('');
+			expect(result.current.isFiltering).toBe(false);
+			expect(result.current.filteredItems.length).toBe(3);
+		});
+	});
+
+	// ─── urlSync ──────────────────────────────────────────────────────────────
+	describe('urlSync', () => {
+		it('reads initial query and structured filters from URL search params', () => {
+			window.history.replaceState({}, '', '?q=CyberDeck&category=Gadgets');
+			const { result } = renderHook(() =>
+				useFilter(mockProducts, {
+					urlSync: true,
+					initialFilters: { category: undefined },
+				}),
+			);
+
+			expect(result.current.query).toBe('CyberDeck');
+			expect(result.current.filters.category).toBe('Gadgets');
+			expect(result.current.filteredItems.length).toBe(1);
+			expect(result.current.filteredItems[0]?.name).toBe('CyberDeck Pro');
+			window.history.replaceState({}, '', '/');
+		});
+
+		it('updates URL search params when query and filters change', () => {
+			window.history.replaceState({}, '', '/');
+			const { result } = renderHook(() =>
+				useFilter(mockProducts, {
+					urlSync: {
+						enabled: true,
+						queryParam: 'search',
+						paramMap: { category: 'cat' },
+					},
+				}),
+			);
+
+			act(() => result.current.setQuery('CyberDeck'));
+			expect(window.location.search).toContain('search=CyberDeck');
+
+			act(() => result.current.setFilter('category', 'Audio'));
+			expect(window.location.search).toContain('cat=Audio');
+
+			act(() => result.current.clearFilter('category'));
+			expect(window.location.search).not.toContain('cat=');
+
+			window.history.replaceState({}, '', '/');
+		});
+
+		it('handles popstate browser back navigation', () => {
+			window.history.replaceState({}, '', '?q=Initial');
+			const { result } = renderHook(() =>
+				useFilter(mockProducts, {
+					urlSync: true,
+				}),
+			);
+
+			expect(result.current.query).toBe('Initial');
+
+			// Simulate back button navigating to new search
+			window.history.replaceState({}, '', '?q=Acoustic');
+			act(() => {
+				window.dispatchEvent(new window.Event('popstate'));
+			});
+
+			expect(result.current.query).toBe('Acoustic');
+			expect(result.current.filteredItems.length).toBe(1);
+			expect(result.current.filteredItems[0]?.name).toBe('Acoustic Pulse');
+			window.history.replaceState({}, '', '/');
+		});
+
+		it('supports React 18/19 useTransition option', () => {
+			const { result } = renderHook(() =>
+				useFilter(mockProducts, {
+					useTransition: true,
+				}),
+			);
+
+			expect(result.current.isFiltering).toBe(false);
+			act(() => result.current.setQuery('Pulse'));
+			expect(result.current.query).toBe('Pulse');
+			expect(result.current.filteredItems.length).toBe(1);
+			expect(result.current.filteredItems[0]?.name).toBe('Acoustic Pulse');
+		});
+	});
 });

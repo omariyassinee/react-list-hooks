@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { UrlSyncOptions, UsePaginateOptions, UsePaginateReturn } from './types';
+import type { PaginationRangeItem, UrlSyncOptions, UsePaginateOptions, UsePaginateReturn } from './types';
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -18,6 +18,51 @@ function sanitizePageSize(size: unknown, fallback: number = DEFAULT_PAGE_SIZE): 
 function computeTotalPages(totalItems: number, pageSize: number): number {
 	const safeSize = sanitizePageSize(pageSize, 1);
 	return Math.max(1, Math.ceil(totalItems / safeSize));
+}
+
+function range(start: number, end: number): number[] {
+	const length = end - start + 1;
+	return Array.from({ length }, (_, i) => start + i);
+}
+
+function computePaginationRange(
+	totalPages: number,
+	currentPage: number,
+	siblingCount: number = 1,
+	boundaryCount: number = 1,
+): PaginationRangeItem[] {
+	const safeSiblings = Math.max(0, siblingCount);
+	const safeBoundaries = Math.max(1, boundaryCount);
+
+	const totalSlots = safeBoundaries * 2 + safeSiblings * 2 + 3;
+
+	if (totalPages <= totalSlots) {
+		return range(1, totalPages);
+	}
+
+	const leftSiblingIndex = Math.max(currentPage - safeSiblings, 1);
+	const rightSiblingIndex = Math.min(currentPage + safeSiblings, totalPages);
+
+	const showLeftEllipsis = leftSiblingIndex > safeBoundaries + 2;
+	const showRightEllipsis = rightSiblingIndex < totalPages - (safeBoundaries + 1);
+
+	const startPages = range(1, safeBoundaries);
+	const endPages = range(totalPages - safeBoundaries + 1, totalPages);
+
+	if (!showLeftEllipsis && showRightEllipsis) {
+		const leftItemCount = safeBoundaries + 2 * safeSiblings + 1;
+		const leftRange = range(1, leftItemCount);
+		return [...leftRange, 'ellipsis', ...endPages];
+	}
+
+	if (showLeftEllipsis && !showRightEllipsis) {
+		const rightItemCount = safeBoundaries + 2 * safeSiblings + 1;
+		const rightRange = range(totalPages - rightItemCount + 1, totalPages);
+		return [...startPages, 'ellipsis', ...rightRange];
+	}
+
+	const middleRange = range(leftSiblingIndex, rightSiblingIndex);
+	return [...startPages, 'ellipsis', ...middleRange, 'ellipsis', ...endPages];
 }
 
 function getUrlParam(key: string): number | null {
@@ -48,6 +93,9 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 	const optionsRef = useRef(options);
 	optionsRef.current = options;
 
+	const siblingCount = options?.siblingCount ?? 1;
+	const boundaryCount = options?.boundaryCount ?? 1;
+
 	const urlSyncConfig: UrlSyncOptions =
 		typeof options?.urlSync === 'object' ? options.urlSync : { enabled: Boolean(options?.urlSync) };
 
@@ -77,8 +125,15 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 	const totalItems = items.length;
 	const totalPages = computeTotalPages(totalItems, pageSize);
 
+	// Refs for stable callbacks — avoids recreating callbacks when derived values change
 	const totalPagesRef = useRef(totalPages);
 	totalPagesRef.current = totalPages;
+
+	const pageSizeRef = useRef(pageSize);
+	pageSizeRef.current = pageSize;
+
+	const totalItemsRef = useRef(totalItems);
+	totalItemsRef.current = totalItems;
 
 	// Initialize currentPage (read from URL if enabled, clamped to valid range)
 	const [currentPage, setCurrentPage] = useState(() => {
@@ -95,6 +150,9 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 
 	// Synchronously calculate effectivePage clamped to valid range
 	const effectivePage = clamp(currentPage, 1, totalPages);
+
+	const effectivePageRef = useRef(effectivePage);
+	effectivePageRef.current = effectivePage;
 
 	// Sync state when effectivePage differs from state (prevents 1-render flash)
 	useEffect(() => {
@@ -163,7 +221,7 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 		return () => window.removeEventListener('popstate', handlePopState);
 	}, [isUrlSyncEnabled, pageParam, pageSizeParam, syncPageSize]);
 
-	// Shareable URL generator helper
+	// Shareable URL generator — reads volatile values from refs for stability
 	const getShareableUrl = useCallback(
 		(targetPage?: number, targetPageSize?: number, baseUrl?: string) => {
 			if (typeof window === 'undefined' && !baseUrl) return '';
@@ -183,8 +241,12 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 						: new URLSearchParams();
 				}
 
-				const p = targetPage !== undefined ? clamp(targetPage, 1, totalPages) : effectivePage;
-				const ps = targetPageSize !== undefined ? sanitizePageSize(targetPageSize, pageSize) : pageSize;
+				const currentTotalPages = totalPagesRef.current;
+				const currentPageSize = pageSizeRef.current;
+				const currentEffectivePage = effectivePageRef.current;
+
+				const p = targetPage !== undefined ? clamp(targetPage, 1, currentTotalPages) : currentEffectivePage;
+				const ps = targetPageSize !== undefined ? sanitizePageSize(targetPageSize, currentPageSize) : currentPageSize;
 
 				searchParams.set(pageParam, String(p));
 				searchParams.set(pageSizeParam, String(ps));
@@ -194,66 +256,62 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 				return '';
 			}
 		},
-		[effectivePage, pageSize, totalPages, pageParam, pageSizeParam, syncPageSize, keepOtherParams],
+		[pageParam, pageSizeParam, keepOtherParams],
 	);
 
 	// --- Derived data (memoized) ---
 
-	const currentItems = useMemo(
-		() => items.slice((effectivePage - 1) * pageSize, effectivePage * pageSize),
-		[items, effectivePage, pageSize],
-	);
-
 	const pageNumbers = useMemo(() => Array.from({ length: totalPages }, (_, i) => i + 1), [totalPages]);
 
-	// --- Status flags ---
+	const paginationRange = useMemo(
+		() => computePaginationRange(totalPages, effectivePage, siblingCount, boundaryCount),
+		[totalPages, effectivePage, siblingCount, boundaryCount],
+	);
 
-	const hasNext = effectivePage < totalPages;
-	const hasPrev = effectivePage > 1;
-	const isFirstPage = effectivePage === 1;
-	const isLastPage = effectivePage === totalPages;
-
-	// --- Navigation ---
+	// --- Stable navigation callbacks (all use refs, [] deps) ---
 
 	const next = useCallback(() => {
-		setCurrentPage((prev) => Math.min(prev + 1, totalPages));
-	}, [totalPages]);
+		setCurrentPage((prev) => Math.min(prev + 1, totalPagesRef.current));
+	}, []);
 
 	const prev = useCallback(() => {
 		setCurrentPage((prev) => Math.max(prev - 1, 1));
 	}, []);
 
-	const goToPage = useCallback(
-		(page: number) => {
-			setCurrentPage(clamp(page, 1, totalPages));
-		},
-		[totalPages],
-	);
+	const goToPage = useCallback((page: number) => {
+		setCurrentPage(clamp(page, 1, totalPagesRef.current));
+	}, []);
 
 	const goToStart = useCallback(() => {
 		setCurrentPage(1);
 	}, []);
 
 	const goToEnd = useCallback(() => {
-		setCurrentPage(totalPages);
-	}, [totalPages]);
+		setCurrentPage(totalPagesRef.current);
+	}, []);
 
-	// --- Page size ---
+	// --- Page size (stable callback via refs) ---
 
-	const setPageSize = useCallback(
-		(newSize: number) => {
-			const safeSize = sanitizePageSize(newSize, 1);
-			const firstVisibleIndex = (effectivePage - 1) * pageSize;
-			const newTotalPages = computeTotalPages(totalItems, safeSize);
-			const newPage = clamp(Math.floor(firstVisibleIndex / safeSize) + 1, 1, newTotalPages);
+	const setPageSize = useCallback((newSize: number) => {
+		const safeSize = sanitizePageSize(newSize, 1);
+		const firstVisibleIndex = (effectivePageRef.current - 1) * pageSizeRef.current;
+		const newTotalPages = computeTotalPages(totalItemsRef.current, safeSize);
+		const newPage = clamp(Math.floor(firstVisibleIndex / safeSize) + 1, 1, newTotalPages);
 
-			setPageSizeState(safeSize);
-			setCurrentPage(newPage);
-		},
-		[effectivePage, pageSize, totalItems],
-	);
+		setPageSizeState(safeSize);
+		setCurrentPage(newPage);
+	}, []);
+
+	// --- Return: single useMemo with inline slice and status flags ---
 
 	return useMemo(() => {
+		const currentItems = items.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
+
+		const hasNext = effectivePage < totalPages;
+		const hasPrev = effectivePage > 1;
+		const isFirstPage = effectivePage === 1;
+		const isLastPage = effectivePage === totalPages;
+
 		const returnArr = [...currentItems];
 		for (const [key, value] of Object.entries({
 			currentPage: effectivePage,
@@ -271,6 +329,7 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 			goToEnd,
 			setPageSize,
 			pageNumbers,
+			paginationRange,
 			isUrlSyncEnabled,
 			getShareableUrl,
 		})) {
@@ -278,15 +337,11 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 		}
 		return returnArr as unknown as UsePaginateReturn<T>;
 	}, [
-		currentItems,
+		items,
 		effectivePage,
 		totalPages,
 		totalItems,
 		pageSize,
-		hasNext,
-		hasPrev,
-		isFirstPage,
-		isLastPage,
 		next,
 		prev,
 		goToPage,
@@ -294,6 +349,7 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 		goToEnd,
 		setPageSize,
 		pageNumbers,
+		paginationRange,
 		isUrlSyncEnabled,
 		getShareableUrl,
 	]);

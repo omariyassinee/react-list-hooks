@@ -13,11 +13,17 @@ export interface UrlSyncOptions {
 	keepOtherParams?: boolean;
 }
 
+export type PaginationRangeItem = number | 'ellipsis';
+
 export interface UsePaginateOptions {
 	/** Number of items per page. Defaults to 10. */
 	pageSize?: number;
 	/** Initial page number (1-indexed). Defaults to 1. Clamped to valid range. */
 	initialPage?: number;
+	/** Number of sibling page numbers to display on each side of the current page. Defaults to 1. */
+	siblingCount?: number;
+	/** Number of boundary page numbers to always display at the beginning and end. Defaults to 1. */
+	boundaryCount?: number;
 	/** URL Search Params sync configuration. Can be a boolean flag or UrlSyncOptions object. */
 	urlSync?: boolean | UrlSyncOptions;
 }
@@ -60,6 +66,8 @@ export interface UsePaginateReturn<T> extends Array<T> {
 	setPageSize: (size: number) => void;
 	/** Array of all page numbers, e.g. [1, 2, 3, 4, 5]. */
 	pageNumbers: number[];
+	/** Smart windowed pagination range with ellipses, e.g. [1, 'ellipsis', 4, 5, 6, 'ellipsis', 50]. */
+	paginationRange: PaginationRangeItem[];
 
 	// url sync extras
 	/** Whether URL search params synchronization is active. */
@@ -70,6 +78,19 @@ export interface UsePaginateReturn<T> extends Array<T> {
 
 export type SortDirection = 'asc' | 'desc';
 
+export interface SortUrlSyncOptions {
+	/** Whether to enable URL parameter syncing for sorting. Defaults to false. */
+	enabled?: boolean;
+	/** Custom search param key for the sort key/field. Defaults to 'sortBy'. */
+	sortKeyParam?: string;
+	/** Custom search param key for sort direction. Defaults to 'sortDir'. */
+	directionParam?: string;
+	/** History navigation method: 'replace' (default) or 'push'. */
+	historyMode?: 'replace' | 'push';
+	/** Whether to keep other existing query parameters in the URL. Defaults to true. */
+	keepOtherParams?: boolean;
+}
+
 export interface UseSortOptions<T> {
 	/** The initial field/key of T to sort by. */
 	initialKey?: keyof T | null;
@@ -77,6 +98,12 @@ export interface UseSortOptions<T> {
 	initialDirection?: SortDirection | null;
 	/** Custom comparator functions for specific keys. */
 	comparators?: Partial<Record<keyof T, (a: T, b: T) => number>>;
+	/** Debounce delay in milliseconds before applying sort changes on large lists. Defaults to 0 (synchronous). */
+	debounceMs?: number;
+	/** Whether to use React 18/19 startTransition to keep UI non-blocking during heavy sorts. Defaults to false. */
+	useTransition?: boolean;
+	/** URL Search Params sync configuration. Can be a boolean flag or SortUrlSyncOptions object. */
+	urlSync?: boolean | SortUrlSyncOptions;
 }
 
 export interface UseSortReturn<T> {
@@ -94,9 +121,24 @@ export interface UseSortReturn<T> {
 	clearSort: () => void;
 	/** Helper to get current sort indicator for a key. */
 	getSortIndicator: (key: keyof T) => SortDirection | null;
+	/** Indicates whether a debounce or sort transition is currently pending/processing. */
+	isSorting: boolean;
 }
 
 export type FilterKey<T> = (keyof T & string) | (string & {});
+
+export interface FilterUrlSyncOptions<K extends string = string> {
+	/** Whether to enable URL parameter syncing for filters. Defaults to false. */
+	enabled?: boolean;
+	/** Custom search param key for global text query. Defaults to 'q'. */
+	queryParam?: string;
+	/** Custom URL search param name mapping for structured filter keys. */
+	paramMap?: Partial<Record<K, string>>;
+	/** History navigation method: 'replace' (default) or 'push'. */
+	historyMode?: 'replace' | 'push';
+	/** Whether to keep other existing query parameters in the URL. Defaults to true. */
+	keepOtherParams?: boolean;
+}
 
 export interface UseFilterOptions<T, K extends string = string> {
 	/** Default search query. */
@@ -108,6 +150,12 @@ export interface UseFilterOptions<T, K extends string = string> {
 	customFilters?: Partial<Record<K | FilterKey<T>, (item: T, filterValue: any) => boolean>>;
 	/** Optional custom text search fields. Defaults to all string/number properties of T. */
 	searchFields?: Array<keyof T>;
+	/** Debounce delay in milliseconds for global text search. Defaults to 0 (synchronous filtering). */
+	debounceMs?: number;
+	/** Whether to use React 18/19 startTransition to keep UI non-blocking during heavy filtering. Defaults to false. */
+	useTransition?: boolean;
+	/** URL Search Params sync configuration. Can be a boolean flag or FilterUrlSyncOptions object. */
+	urlSync?: boolean | FilterUrlSyncOptions<K | FilterKey<T>>;
 }
 
 export interface UseFilterReturn<T, K extends string = string> {
@@ -127,4 +175,6 @@ export interface UseFilterReturn<T, K extends string = string> {
 	clearFilters: () => void;
 	/** Reset both search query and all filters. */
 	clearAll: () => void;
+	/** Whether a debounce filtering computation is currently pending. */
+	isFiltering: boolean;
 }

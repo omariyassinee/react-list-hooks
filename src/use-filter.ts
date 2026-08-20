@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
-import type { FilterKey, UseFilterOptions, UseFilterReturn } from './types';
+import type { FilterKey, FilterUrlSyncOptions, UseFilterOptions, UseFilterReturn } from './types';
 
 function isMatch(itemVal: unknown, filterVal: unknown): boolean {
 	if (Object.is(itemVal, filterVal) || itemVal === filterVal) return true;
@@ -18,21 +18,226 @@ function isMatch(itemVal: unknown, filterVal: unknown): boolean {
 	return false;
 }
 
+function getUrlParamString(key: string): string | null {
+	if (typeof window === 'undefined') return null;
+	try {
+		const searchParams = new URLSearchParams(window.location.search);
+		return searchParams.get(key);
+	} catch {
+		return null;
+	}
+}
+
+function getInitialQuery(
+	initialQuery?: string,
+	isUrlSyncEnabled?: boolean,
+	queryParam: string = 'q',
+): string {
+	const defaultQuery = initialQuery ?? '';
+	if (!isUrlSyncEnabled) return defaultQuery;
+	const fromUrl = getUrlParamString(queryParam);
+	return fromUrl !== null ? fromUrl : defaultQuery;
+}
+
+function getInitialFilters<ActualKey extends string>(
+	initialFilters?: Partial<Record<ActualKey, unknown>>,
+	isUrlSyncEnabled?: boolean,
+	paramMap: Partial<Record<ActualKey, string>> = {},
+): Partial<Record<ActualKey, unknown>> {
+	const initial = initialFilters ?? {};
+	if (!isUrlSyncEnabled || typeof window === 'undefined') return initial;
+
+	try {
+		const searchParams = new URLSearchParams(window.location.search);
+		const result: Partial<Record<ActualKey, unknown>> = { ...initial };
+
+		for (const [urlKey, urlVal] of searchParams.entries()) {
+			for (const [key, mappedName] of Object.entries(paramMap) as Array<[ActualKey, string]>) {
+				if (urlKey === mappedName) {
+					result[key] = urlVal;
+				}
+			}
+			if (urlKey in initial) {
+				(result as Record<string, unknown>)[urlKey] = urlVal;
+			}
+		}
+		return result;
+	} catch {
+		return initial;
+	}
+}
+
 export function useFilter<T, K extends string = string>(
 	items: T[],
 	options?: UseFilterOptions<T, K>,
 ): UseFilterReturn<T, K> {
 	type ActualKey = K | FilterKey<T>;
+
+	const optionsRef = useRef(options);
+	optionsRef.current = options;
+
 	const customFiltersRef = useRef(options?.customFilters);
 	customFiltersRef.current = options?.customFilters;
 
 	const searchFieldsRef = useRef(options?.searchFields);
 	searchFieldsRef.current = options?.searchFields;
 
-	const [query, setQuery] = useState(options?.initialQuery ?? '');
-	const [filters, setFilters] = useState<Partial<Record<ActualKey, unknown>>>(
-		(options?.initialFilters as Partial<Record<ActualKey, unknown>>) ?? {},
+	const debounceMs = options?.debounceMs ?? 0;
+	const useTransitionOption = Boolean(options?.useTransition);
+
+	const [isPending, startTransition] = useTransition();
+
+	const urlSyncConfig: FilterUrlSyncOptions<ActualKey> =
+		typeof options?.urlSync === 'object' ? options.urlSync : { enabled: Boolean(options?.urlSync) };
+
+	const isUrlSyncEnabled = Boolean(urlSyncConfig.enabled);
+	const queryParam = urlSyncConfig.queryParam ?? 'q';
+	const paramMap = useMemo<Partial<Record<ActualKey, string>>>(
+		() => (urlSyncConfig.paramMap ?? {}) as Partial<Record<ActualKey, string>>,
+		[urlSyncConfig.paramMap],
 	);
+	const historyMode = urlSyncConfig.historyMode ?? 'replace';
+	const keepOtherParams = urlSyncConfig.keepOtherParams ?? true;
+
+	const [query, setQueryState] = useState(() =>
+		getInitialQuery(options?.initialQuery, isUrlSyncEnabled, queryParam),
+	);
+	const [appliedQuery, setAppliedQuery] = useState(query);
+	const [isDebouncing, setIsDebouncing] = useState(false);
+
+	const [filters, setFilters] = useState<Partial<Record<ActualKey, unknown>>>(() =>
+		getInitialFilters<ActualKey>(
+			options?.initialFilters as Partial<Record<ActualKey, unknown>> | undefined,
+			isUrlSyncEnabled,
+			paramMap,
+		),
+	);
+
+	// Handle debounce / transition timing for text query
+	useEffect(() => {
+		if (query === appliedQuery) {
+			setIsDebouncing(false);
+			return;
+		}
+
+		if (debounceMs <= 0) {
+			if (useTransitionOption) {
+				startTransition(() => {
+					setAppliedQuery(query);
+				});
+			} else {
+				setAppliedQuery(query);
+			}
+			setIsDebouncing(false);
+			return;
+		}
+
+		setIsDebouncing(true);
+		const handler = setTimeout(() => {
+			if (useTransitionOption) {
+				startTransition(() => {
+					setAppliedQuery(query);
+				});
+			} else {
+				setAppliedQuery(query);
+			}
+			setIsDebouncing(false);
+		}, debounceMs);
+
+		return () => {
+			clearTimeout(handler);
+		};
+	}, [query, debounceMs, appliedQuery, useTransitionOption]);
+
+	// Sync state to URL search parameters
+	useEffect(() => {
+		if (!isUrlSyncEnabled || typeof window === 'undefined') return;
+
+		try {
+			const currentSearchParams = new URLSearchParams(window.location.search);
+			const searchParams = keepOtherParams ? new URLSearchParams(currentSearchParams) : new URLSearchParams();
+
+			if (appliedQuery.trim()) {
+				searchParams.set(queryParam, appliedQuery.trim());
+			} else {
+				searchParams.delete(queryParam);
+			}
+
+			const activeParamNames = new Set<string>();
+			for (const [filterKey, filterVal] of Object.entries(filters)) {
+				if (filterVal !== undefined && filterVal !== null && filterVal !== '') {
+					const paramName = paramMap[filterKey as ActualKey] ?? filterKey;
+					searchParams.set(paramName, String(filterVal));
+					activeParamNames.add(paramName);
+				}
+			}
+
+			// Clean up removed filters from query params
+			for (const [filterKey, mappedParam] of Object.entries(paramMap)) {
+				const paramName = (mappedParam as string) ?? filterKey;
+				if (!activeParamNames.has(paramName)) {
+					searchParams.delete(paramName);
+				}
+			}
+			for (const key of Object.keys(filters)) {
+				const paramName = paramMap[key as ActualKey] ?? key;
+				if (filters[key as ActualKey] === undefined) {
+					searchParams.delete(paramName);
+				}
+			}
+
+			const queryString = searchParams.toString();
+			const newSearch = queryString ? `?${queryString}` : '';
+			const currentPathWithSearch = window.location.pathname + window.location.search + window.location.hash;
+			const targetPathWithSearch = window.location.pathname + newSearch + window.location.hash;
+
+			if (currentPathWithSearch !== targetPathWithSearch) {
+				if (historyMode === 'push') {
+					window.history.pushState(window.history.state, '', targetPathWithSearch);
+				} else {
+					window.history.replaceState(window.history.state, '', targetPathWithSearch);
+				}
+			}
+		} catch {
+			// Ignore URL manipulation failures in restricted environments
+		}
+	}, [
+		appliedQuery,
+		filters,
+		isUrlSyncEnabled,
+		queryParam,
+		paramMap,
+		historyMode,
+		keepOtherParams,
+	]);
+
+	// Handle popstate events for back/forward navigation
+	useEffect(() => {
+		if (!isUrlSyncEnabled || typeof window === 'undefined') return;
+
+		const handlePopState = () => {
+			const q = getUrlParamString(queryParam);
+			const defaultQuery = optionsRef.current?.initialQuery ?? '';
+			const resolvedQuery = q !== null ? q : defaultQuery;
+			setQueryState(resolvedQuery);
+			setAppliedQuery(resolvedQuery);
+			setIsDebouncing(false);
+
+			const currentFilters = getInitialFilters<ActualKey>(
+				optionsRef.current?.initialFilters as Partial<Record<ActualKey, unknown>> | undefined,
+				isUrlSyncEnabled,
+				paramMap,
+			);
+			setFilters(currentFilters);
+		};
+
+		window.addEventListener('popstate', handlePopState);
+		return () => window.removeEventListener('popstate', handlePopState);
+	}, [isUrlSyncEnabled, queryParam, paramMap]);
+
+	const setQuery = useCallback((newQuery: string) => {
+		setQueryState(newQuery);
+	}, []);
 
 	const clearFilter = useCallback((key: ActualKey) => {
 		setFilters((prev) => {
@@ -61,7 +266,9 @@ export function useFilter<T, K extends string = string>(
 	}, []);
 
 	const clearAll = useCallback(() => {
-		setQuery('');
+		setQueryState('');
+		setAppliedQuery('');
+		setIsDebouncing(false);
 		setFilters({});
 	}, []);
 
@@ -86,9 +293,9 @@ export function useFilter<T, K extends string = string>(
 		return Array.from(fieldSet);
 	}, [items]);
 
-	// Memoized filtered items
+	// Memoized filtered items (uses appliedQuery for filtering)
 	const filteredItems = useMemo(() => {
-		const trimmedQuery = query.trim();
+		const trimmedQuery = appliedQuery.trim();
 		const normalizedQuery = trimmedQuery ? trimmedQuery.toLowerCase() : '';
 		const activeFilterEntries = Object.entries(filters).filter(([_, val]) => val !== undefined);
 
@@ -129,7 +336,9 @@ export function useFilter<T, K extends string = string>(
 
 			return true;
 		});
-	}, [items, query, filters, resolvedSearchFields]);
+	}, [items, appliedQuery, filters, resolvedSearchFields]);
+
+	const isFiltering = isDebouncing || isPending;
 
 	return useMemo(
 		() => ({
@@ -141,7 +350,8 @@ export function useFilter<T, K extends string = string>(
 			clearFilter,
 			clearFilters,
 			clearAll,
+			isFiltering,
 		}),
-		[filteredItems, query, setQuery, filters, setFilter, clearFilter, clearFilters, clearAll],
+		[filteredItems, query, setQuery, filters, setFilter, clearFilter, clearFilters, clearAll, isFiltering],
 	);
 }

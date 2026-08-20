@@ -425,5 +425,101 @@ describe('usePaginate', () => {
 			expect(result.current.getShareableUrl(2)).toBe('/?page=2&pageSize=10');
 			expect(result.current.getShareableUrl(2, 25)).toBe('/?page=2&pageSize=25');
 		});
+
+		it('maintains callback reference stability across page navigations', () => {
+			const { result } = renderHook(() => usePaginate(items(50), { pageSize: 10 }));
+			const initialNext = result.current.next;
+			const initialPrev = result.current.prev;
+			const initialGoToPage = result.current.goToPage;
+			const initialGoToStart = result.current.goToStart;
+			const initialGoToEnd = result.current.goToEnd;
+			const initialSetPageSize = result.current.setPageSize;
+			const initialGetShareableUrl = result.current.getShareableUrl;
+
+			act(() => result.current.goToPage(3));
+			expect(result.current.currentPage).toBe(3);
+
+			expect(result.current.next).toBe(initialNext);
+			expect(result.current.prev).toBe(initialPrev);
+			expect(result.current.goToPage).toBe(initialGoToPage);
+			expect(result.current.goToStart).toBe(initialGoToStart);
+			expect(result.current.goToEnd).toBe(initialGoToEnd);
+			expect(result.current.setPageSize).toBe(initialSetPageSize);
+			expect(result.current.getShareableUrl).toBe(initialGetShareableUrl);
+		});
+
+		it('maintains callback reference stability when dataset items change', () => {
+			const { result, rerender } = renderHook(({ data }) => usePaginate(data, { pageSize: 10 }), {
+				initialProps: { data: items(20) },
+			});
+			const initialNext = result.current.next;
+			const initialPrev = result.current.prev;
+			const initialGoToPage = result.current.goToPage;
+			const initialGoToStart = result.current.goToStart;
+			const initialGoToEnd = result.current.goToEnd;
+			const initialSetPageSize = result.current.setPageSize;
+
+			// Expand dataset from 20 to 100 items (changing totalPages from 2 to 10)
+			rerender({ data: items(100) });
+			expect(result.current.totalPages).toBe(10);
+
+			expect(result.current.next).toBe(initialNext);
+			expect(result.current.prev).toBe(initialPrev);
+			expect(result.current.goToPage).toBe(initialGoToPage);
+			expect(result.current.goToStart).toBe(initialGoToStart);
+			expect(result.current.goToEnd).toBe(initialGoToEnd);
+			expect(result.current.setPageSize).toBe(initialSetPageSize);
+
+			// Test that stable callbacks still work correctly with updated totalPages
+			act(() => result.current.goToEnd());
+			expect(result.current.currentPage).toBe(10);
+		});
+	});
+
+	// ─── paginationRange Windowing ──────────────────────────────────────────────
+	describe('paginationRange', () => {
+		it('returns all page numbers without ellipses when totalPages <= totalSlots', () => {
+			const { result } = renderHook(() => usePaginate(items(50), { pageSize: 10 }));
+			// 5 total pages <= 7 default slots -> [1, 2, 3, 4, 5]
+			expect(result.current.paginationRange).toEqual([1, 2, 3, 4, 5]);
+		});
+
+		it('shows right ellipsis when near the beginning of large pages count', () => {
+			const { result } = renderHook(() => usePaginate(items(200), { pageSize: 10, initialPage: 1 }));
+			// 20 pages, page 1: [1, 2, 3, 4, 'ellipsis', 20]
+			expect(result.current.paginationRange).toEqual([1, 2, 3, 4, 'ellipsis', 20]);
+		});
+
+		it('shows both left and right ellipses when in the middle of large pages count', () => {
+			const { result } = renderHook(() => usePaginate(items(200), { pageSize: 10, initialPage: 10 }));
+			// 20 pages, page 10: [1, 'ellipsis', 9, 10, 11, 'ellipsis', 20]
+			expect(result.current.paginationRange).toEqual([1, 'ellipsis', 9, 10, 11, 'ellipsis', 20]);
+		});
+
+		it('shows left ellipsis when near the end of large pages count', () => {
+			const { result } = renderHook(() => usePaginate(items(200), { pageSize: 10, initialPage: 20 }));
+			// 20 pages, page 20: [1, 'ellipsis', 17, 18, 19, 20]
+			expect(result.current.paginationRange).toEqual([1, 'ellipsis', 17, 18, 19, 20]);
+		});
+
+		it('supports custom siblingCount and boundaryCount', () => {
+			const { result } = renderHook(() =>
+				usePaginate(items(300), { pageSize: 10, initialPage: 15, siblingCount: 2, boundaryCount: 2 }),
+			);
+			// 30 pages, page 15, siblings=2, boundary=2: [1, 2, 'ellipsis', 13, 14, 15, 16, 17, 'ellipsis', 29, 30]
+			expect(result.current.paginationRange).toEqual([
+				1,
+				2,
+				'ellipsis',
+				13,
+				14,
+				15,
+				16,
+				17,
+				'ellipsis',
+				29,
+				30,
+			]);
+		});
 	});
 });
