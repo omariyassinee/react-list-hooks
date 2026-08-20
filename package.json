@@ -1,12 +1,20 @@
 {
 	"name": "@omariyassine/react-list-hooks",
-	"version": "0.2.3",
-	"description": "A generic React hook for paginating arrays with full navigation controls",
+	"version": "0.2.4",
+	"description": "A generic, high-performance collection of React hooks for paginating, sorting, and filtering arrays with URL synchronization and 100k+ item support",
 	"type": "module",
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.js",
 	"types": "./dist/index.d.ts",
 	"sideEffects": false,
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/omariyassinee/react-list-hooks.git"
+	},
+	"homepage": "https://github.com/omariyassinee/react-list-hooks#readme",
+	"bugs": {
+		"url": "https://github.com/omariyassinee/react-list-hooks/issues"
+	},
 	"exports": {
 		".": {
 			"import": {
@@ -73,10 +81,17 @@
 	},
 	"keywords": [
 		"react",
-		"hook",
+		"hooks",
 		"pagination",
 		"paginate",
-		"usePaginate"
+		"usePaginate",
+		"sort",
+		"sorting",
+		"useSort",
+		"filter",
+		"filtering",
+		"useFilter",
+		"url-sync"
 	],
 	"license": "MIT"
 }

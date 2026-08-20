@@ -43,7 +43,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Misc
 demo/
-demo
 .agents/
 .continue
 

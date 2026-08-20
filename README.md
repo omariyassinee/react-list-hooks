@@ -1,6 +1,6 @@
 # @omariyassine/react-list-hooks
 
-A lightweight, zero-dependency (peer React only) collection of React hooks for managing list state — pagination, sorting, and filtering. Each hook is designed to be composable, type-safe, and fully generic so you can drop them onto any array of data.
+A lightweight, zero-dependency (peer React only) collection of generic React hooks for managing list state — pagination, sorting, and filtering. Each hook is composable, type-safe, and designed to handle massive datasets (100,000+ items) with high performance and optional URL state synchronization.
 
 ---
 
@@ -13,22 +13,27 @@ A lightweight, zero-dependency (peer React only) collection of React hooks for m
   - [Basic Usage](#basic-usage)
   - [Return Value](#return-value)
   - [Options](#options)
+  - [Windowed Pagination & Ellipses (`paginationRange`)](#windowed-pagination--ellipses-paginationrange)
   - [URL Synchronization](#url-synchronization)
   - [Navigation](#navigation)
   - [Page Size Management](#page-size-management)
   - [Shareable URLs](#shareable-urls)
-  - [How It Works Internally](#how-it-works-internally)
 - [`useSort`](#usesort)
   - [Basic Usage](#basic-usage-1)
   - [Return Value](#return-value-1)
   - [Options](#options-1)
-  - [Default Comparator](#default-comparator)
+  - [URL Synchronization](#url-synchronization-1)
+  - [Default Comparator & Fast Collation](#default-comparator--fast-collation)
+  - [Large Dataset Optimization (Schwartzian Transform)](#large-dataset-optimization-schwartzian-transform)
   - [Custom Comparators](#custom-comparators)
+  - [Debounce & React 18/19 `useTransition`](#debounce--react-1819-usetransition)
   - [Toggle Sort Cycle](#toggle-sort-cycle)
 - [`useFilter`](#usefilter)
   - [Basic Usage](#basic-usage-2)
   - [Return Value](#return-value-2)
   - [Options](#options-2)
+  - [URL Synchronization](#url-synchronization-2)
+  - [Debounce & React 18/19 `useTransition`](#debounce--react-1819-usetransition-1)
   - [Global Text Search](#global-text-search)
   - [Field-Specific Filters & Synthetic Filter Keys](#field-specific-filters--synthetic-filter-keys)
   - [Custom Filter Predicates](#custom-filter-predicates)
@@ -55,13 +60,13 @@ Requires React >= 18 as a peer dependency.
 
 ## Overview
 
-The package exports three independent hooks that can be used alone or composed together:
+The package exports three independent hooks that can be used alone or composed together in a pipeline (**Filter → Sort → Paginate**):
 
 | Hook | Purpose |
 |------|---------|
-| `usePaginate` | Slice an array into pages, navigate between them, sync state to the URL, and generate shareable links. |
-| `useSort` | Sort an array by a key with automatic type-aware comparison, custom comparators, and a toggle-friendly API. |
-| `useFilter` | Filter an array by a global text query and/or structured field-level filters with custom predicates and synthetic keys. |
+| `usePaginate` | Slice an array into pages, navigate with windowed range (`paginationRange`), sync state to the URL, and generate shareable links. |
+| `useSort` | Sort an array with automatic type-aware comparison, Schwartzian transform for 100k+ speed, custom comparators, `isSorting`, and URL sync. |
+| `useFilter` | Filter an array by a global text query and/or structured filters with debouncing, `isFiltering`, `useTransition`, and URL sync. |
 
 All hooks are fully typed with generics and work with any object shape.
 
@@ -85,7 +90,7 @@ import { useFilter } from '@omariyassine/react-list-hooks/use-filter';
 
 ## `usePaginate`
 
-`usePaginate` takes an array and options, and returns a paginated slice along with navigation controls, status flags, and optional URL synchronization.
+`usePaginate` takes an array and options, and returns a paginated slice along with navigation controls, status flags, windowed pagination ranges with ellipses, and optional URL synchronization.
 
 ### Basic Usage
 
@@ -93,7 +98,11 @@ import { useFilter } from '@omariyassine/react-list-hooks/use-filter';
 import { usePaginate } from '@omariyassine/react-list-hooks';
 
 function ProductList({ products }) {
-  const page = usePaginate(products, { pageSize: 20 });
+  const page = usePaginate(products, {
+    pageSize: 20,
+    siblingCount: 1,
+    boundaryCount: 1,
+  });
 
   return (
     <div>
@@ -102,15 +111,23 @@ function ProductList({ products }) {
       ))}
 
       <div className="controls">
-        <button onClick={page.prev} disabled={!page.hasPrev}>
-          Previous
-        </button>
-        <span>
-          Page {page.currentPage} of {page.totalPages}
-        </span>
-        <button onClick={page.next} disabled={!page.hasNext}>
-          Next
-        </button>
+        <button onClick={page.prev} disabled={!page.hasPrev}>Previous</button>
+
+        {page.paginationRange.map((item, index) =>
+          item === 'ellipsis' ? (
+            <span key={`ellipsis-${index}`}>...</span>
+          ) : (
+            <button
+              key={item}
+              className={page.currentPage === item ? 'active' : ''}
+              onClick={() => page.goToPage(item)}
+            >
+              {item}
+            </button>
+          )
+        )}
+
+        <button onClick={page.next} disabled={!page.hasNext}>Next</button>
       </div>
     </div>
   );
@@ -139,7 +156,8 @@ The return type `UsePaginateReturn<T>` extends `Array<T>` and exposes the follow
 | `goToStart` | `() => void` | Jump to page 1. |
 | `goToEnd` | `() => void` | Jump to the last page. |
 | `setPageSize` | `(size: number) => void` | Change the page size. Preserves the user's approximate scroll position by recalculating the current page. |
-| `pageNumbers` | `number[]` | An array of all page numbers, e.g. `[1, 2, 3, 4, 5]`. Useful for rendering page buttons. |
+| `pageNumbers` | `number[]` | An array of all page numbers, e.g. `[1, 2, 3, 4, 5]`. |
+| `paginationRange` | `Array<number \| 'ellipsis'>` | Smart windowed page numbers with ellipsis markers (e.g. `[1, 'ellipsis', 4, 5, 6, 'ellipsis', 100]`). |
 | `isUrlSyncEnabled` | `boolean` | Whether URL synchronization is active. |
 | `getShareableUrl` | `(targetPage?, targetPageSize?, baseUrl?) => string` | Generate a URL string with the pagination params applied. |
 
@@ -153,117 +171,53 @@ interface UsePaginateOptions {
   pageSize?: number;
   /** Initial page number (1-indexed). Defaults to 1. Clamped to valid range. */
   initialPage?: number;
-  /** URL Search Params sync configuration. Can be a boolean flag or UrlSyncOptions object. */
-  urlSync?: boolean | UrlSyncOptions;
+  /** Number of always visible pages before and after the current page. Defaults to 1. */
+  siblingCount?: number;
+  /** Number of always visible pages at the beginning and end. Defaults to 1. */
+  boundaryCount?: number;
+  /** URL Search Params sync configuration. Can be a boolean flag or PaginateUrlSyncOptions object. */
+  urlSync?: boolean | PaginateUrlSyncOptions;
 }
+```
+
+### Windowed Pagination & Ellipses (`paginationRange`)
+
+When rendering pagination controls for large datasets (e.g. 500 pages), rendering hundreds of buttons degrades performance. `paginationRange` calculates a sliding window with ellipsis tokens:
+
+```tsx
+const page = usePaginate(items, {
+  pageSize: 25,
+  siblingCount: 1, // Number of pages adjacent to current page
+  boundaryCount: 1, // Number of pages at start and end
+});
+
+// If currentPage is 5 on 100 total pages:
+// page.paginationRange -> [1, 'ellipsis', 4, 5, 6, 'ellipsis', 100]
 ```
 
 ### URL Synchronization
 
-When `urlSync` is enabled, the current page and page size are read from and written to the browser's URL search parameters. This makes pagination state bookmarkable, shareable, and respects the browser back/forward buttons.
+When `urlSync` is enabled, the current page and page size are read from and written to the browser's URL search parameters. This makes pagination state bookmarkable, shareable, and respects browser back/forward buttons.
 
 ```tsx
 const page = usePaginate(products, {
   pageSize: 20,
-  urlSync: true, // enables sync with defaults
-});
-```
-
-For fine-grained control, pass an object:
-
-```tsx
-const page = usePaginate(products, {
   urlSync: {
     enabled: true,
     pageParam: 'p',           // default: 'page'
     pageSizeParam: 'limit',   // default: 'pageSize'
     syncPageSize: true,       // default: true
     historyMode: 'push',      // default: 'replace'
-    keepOtherParams: true,    // default: true
+    keepOtherParams: true,    // default: true (preserves filter/sort params)
   },
 });
 ```
-
-**URL Sync Options:**
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `enabled` | `false` | Turn URL sync on or off. |
-| `pageParam` | `'page'` | The query parameter name for the current page. |
-| `pageSizeParam` | `'pageSize'` | The query parameter name for the page size. |
-| `syncPageSize` | `true` | Whether to include `pageSize` in the URL. |
-| `historyMode` | `'replace'` | Use `'replace'` to avoid polluting history, or `'push'` to create a new history entry on every change. |
-| `keepOtherParams` | `true` | Whether to preserve existing query parameters (e.g. search filters) when updating the URL. |
-
-**Behavior:**
-- On mount, the hook reads `page` and `pageSize` from the URL. If present and valid, they override `initialPage` and `pageSize`.
-- On state change, the hook updates the URL automatically.
-- On `popstate` (browser back/forward), the hook re-reads the URL and updates state accordingly.
-- All URL manipulation is wrapped in `try/catch` so it fails silently in restricted environments (e.g. SSR, iframes).
-
-### Navigation
-
-All navigation functions are stable callbacks (safe to pass directly to event handlers):
-
-```tsx
-<button onClick={page.next}>Next</button>
-<button onClick={page.prev}>Previous</button>
-<button onClick={() => page.goToPage(5)}>Go to 5</button>
-<button onClick={page.goToStart}>First</button>
-<button onClick={page.goToEnd}>Last</button>
-```
-
-Boundary checks are built-in: calling `next()` on the last page is a no-op, and `goToPage` clamps its argument to the valid range `[1, totalPages]`.
-
-### Page Size Management
-
-`setPageSize` dynamically changes the number of items per page. It is smart about preserving the user's context: when the page size changes, the hook recalculates which page contains the first item that was visible before, so the user doesn't jump to an arbitrary location.
-
-Additionally, if the `options.pageSize` prop changes dynamically, the hook automatically updates the internal page size while preserving position.
-
-```tsx
-<select
-  value={page.pageSize}
-  onChange={(e) => page.setPageSize(Number(e.target.value))}
->
-  <option value={10}>10</option>
-  <option value={25}>25</option>
-  <option value={50}>50</option>
-</select>
-```
-
-### Shareable URLs
-
-`getShareableUrl` generates a URL string with the pagination parameters baked in. You can use it to create "copy link to page" buttons or pre-generate links for specific pages.
-
-```tsx
-// Current page
-const currentUrl = page.getShareableUrl();
-
-// Specific page (target page clamped to [1, totalPages])
-const page3Url = page.getShareableUrl(3);
-
-// Specific page and size
-const customUrl = page.getShareableUrl(3, 25);
-
-// With a custom base URL
-const baseUrl = page.getShareableUrl(3, 25, '/products');
-```
-
-If `keepOtherParams` is enabled, existing query parameters are preserved in the generated URL.
-
-### How It Works Internally
-
-- The hook uses `useState` for `currentPage` and `pageSize`, and `useMemo` for the sliced `currentItems` and `pageNumbers`.
-- Refs hold the latest `options` and `totalPages` so that stable callbacks always operate on fresh data without unnecessary re-renders.
-- `useEffect` handles clamping the page when `totalPages` changes, syncing state to the URL, and listening to `popstate` for back/forward navigation.
-- The return value is constructed with `Object.defineProperty` on a shallow copy of `currentItems`, creating non-enumerable metadata properties.
 
 ---
 
 ## `useSort`
 
-`useSort` sorts an array by a given key with automatic type-aware comparison. It supports custom comparators, explicit sort setting, and a convenient toggle cycle for UI interactions.
+`useSort` sorts an array by a given key with automatic type-aware comparison, Schwartzian Transform optimization for massive datasets, URL synchronization, custom comparators, and React 18/19 `useTransition` support.
 
 ### Basic Usage
 
@@ -271,9 +225,10 @@ If `keepOtherParams` is enabled, existing query parameters are preserved in the 
 import { useSort } from '@omariyassine/react-list-hooks';
 
 function UserTable({ users }) {
-  const { sortedItems, toggleSort, getSortIndicator } = useSort(users, {
+  const { sortedItems, sortKey, sortDirection, toggleSort, getSortIndicator, isSorting } = useSort(users, {
     initialKey: 'name',
     initialDirection: 'asc',
+    useTransition: true, // Non-blocking concurrent rendering
   });
 
   return (
@@ -312,24 +267,24 @@ interface UseSortReturn<T> {
   toggleSort: (key: keyof T) => void;
   clearSort: () => void;
   getSortIndicator: (key: keyof T) => SortDirection | null;
+  isSorting: boolean;
 }
 ```
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `sortedItems` | `T[]` | The array sorted by the current key and direction. If no sort is active, returns the original array reference. |
-| `sortKey` | `keyof T \| null` | The key currently being sorted by. `null` if no sort is active. |
-| `sortDirection` | `'asc' \| 'desc' \| null` | The current sort direction. `null` if no sort is active. |
+| `sortedItems` | `T[]` | The array sorted by the current key and direction. Returns original array reference if no sort is active. |
+| `sortKey` | `keyof T \| null` | The key currently being sorted by. `null` if inactive. |
+| `sortDirection` | `'asc' \| 'desc' \| null` | The current sort direction. |
 | `setSort` | `(key, direction?) => void` | Explicitly sort by a key. Direction defaults to `'asc'`. |
 | `toggleSort` | `(key) => void` | Cycle through sort states for a key: **asc → desc → clear → asc**. |
 | `clearSort` | `() => void` | Remove sorting and return to the original order. |
-| `getSortIndicator` | `(key) => SortDirection \| null` | Returns the current direction for a given key, or `null` if that key is not the active sort. Useful for rendering sort icons in table headers. |
+| `getSortIndicator` | `(key) => SortDirection \| null` | Returns the current direction for a given key, or `null` if inactive. |
+| `isSorting` | `boolean` | `true` while a debounce timer or React 18/19 concurrent transition is in progress. |
 
 ### Options
 
 ```ts
-type SortDirection = 'asc' | 'desc';
-
 interface UseSortOptions<T> {
   /** The initial field/key of T to sort by. */
   initialKey?: keyof T | null;
@@ -337,16 +292,38 @@ interface UseSortOptions<T> {
   initialDirection?: SortDirection | null;
   /** Custom comparator functions for specific keys. */
   comparators?: Partial<Record<keyof T, (a: T, b: T) => number>>;
+  /** Debounce delay in milliseconds before applying sort changes on large lists. Defaults to 0. */
+  debounceMs?: number;
+  /** Whether to use React 18/19 startTransition to keep UI non-blocking during heavy sorts. Defaults to false. */
+  useTransition?: boolean;
+  /** URL Search Params sync configuration. Can be a boolean flag or SortUrlSyncOptions object. */
+  urlSync?: boolean | SortUrlSyncOptions;
 }
 ```
 
-### Default Comparator
+### URL Synchronization
 
-When no custom comparator is provided for a key, `useSort` uses a built-in comparator that intelligently handles all JavaScript primitives and data types:
+`useSort` supports syncing active sort keys and directions to URL search parameters:
+
+```tsx
+const { sortedItems } = useSort(users, {
+  urlSync: {
+    enabled: true,
+    sortKeyParam: 'sortBy',    // default: 'sortBy'
+    directionParam: 'sortDir', // default: 'sortDir'
+    historyMode: 'replace',    // default: 'replace'
+    keepOtherParams: true,     // default: true
+  },
+});
+```
+
+### Default Comparator & Fast Collation
+
+`useSort` uses a cached, module-level singleton `Intl.Collator` instance with `{ numeric: true, sensitivity: 'base' }` for natural string comparisons (e.g. `"item2"` sorts before `"item10"`), avoiding repeated instantiation penalties on large lists.
 
 | Type | Comparison Strategy |
 |------|---------------------|
-| `string` | Natural sort using `localeCompare` with `{ numeric: true, sensitivity: 'base' }` (e.g. `"item2"` sorts before `"item10"`). |
+| `string` | Natural sort using cached `Intl.Collator` singleton. |
 | `Date` | Compares timestamps via `.getTime()`. |
 | `boolean` | `true` (1) comes after `false` (0). |
 | `number` | Numeric comparison. `NaN` values are stably pushed to the bottom. |
@@ -356,22 +333,25 @@ When no custom comparator is provided for a key, `useSort` uses a built-in compa
 | `object` | Stringified representation comparison. |
 | `null` / `undefined` | **NULLS LAST**: Always placed at the bottom in both `asc` and `desc` directions. |
 
-The original array is never mutated; `useSort` creates a shallow copy with `[...items].sort(...)` only when sorting is active.
+### Large Dataset Optimization (Schwartzian Transform)
+
+`useSort` automatically uses the **Schwartzian Transform** (Decorate-Sort-Undecorate) during sorting:
+1. Pre-extracts sort keys into pre-allocated memory structures in a single contiguous $O(N)$ pass.
+2. Sorts pre-extracted primitives with guaranteed index stability fallback (`a.index - b.index`).
+3. Direct un-decorates into the final output array.
+
+This avoids repeated $N \log N$ object property lookups, making sorting over **100,000+ items** blazing fast.
 
 ### Custom Comparators
-
-For complex types or domain-specific ordering, provide a comparator map:
 
 ```tsx
 const { sortedItems } = useSort(employees, {
   comparators: {
-    // Sort by last name, then first name
     fullName: (a, b) => {
       const aLast = a.name.split(' ').pop()!;
       const bLast = b.name.split(' ').pop()!;
       return aLast.localeCompare(bLast) || a.name.localeCompare(b.name);
     },
-    // Custom priority ordering
     priority: (a, b) => {
       const order = { critical: 0, high: 1, medium: 2, low: 3 };
       return order[a.priority] - order[b.priority];
@@ -380,22 +360,11 @@ const { sortedItems } = useSort(employees, {
 });
 ```
 
-Custom comparators receive the full item objects `(a, b)` and return a standard comparison number (`< 0`, `0`, or `> 0`). The hook automatically multiplies the result when switching between `asc` and `desc`.
-
-### Toggle Sort Cycle
-
-`toggleSort` is designed for clickable table headers. It cycles through three states:
-
-1. **First click** on a column → sort **ascending**.
-2. **Second click** on the same column → sort **descending**.
-3. **Third click** on the same column → **clear** sort (return to original order).
-4. **Subsequent click** → back to ascending.
-
 ---
 
 ## `useFilter`
 
-`useFilter` filters an array by a global text query (searched across multiple fields) and/or structured field-specific filters. It supports custom filter predicates and synthetic filter keys for advanced matching logic.
+`useFilter` filters an array by a global text query (searched across multiple fields) and/or structured field-specific filters, with built-in search debouncing, URL synchronization, and React 18/19 `useTransition` support.
 
 ### Basic Usage
 
@@ -403,8 +372,19 @@ Custom comparators receive the full item objects `(a, b)` and return a standard 
 import { useFilter } from '@omariyassine/react-list-hooks';
 
 function ProductList({ products }) {
-  const { filteredItems, query, setQuery, filters, setFilter, clearAll } = useFilter(products, {
-    searchFields: ['name', 'description'],
+  const {
+    filteredItems,
+    query,
+    setQuery,
+    filters,
+    setFilter,
+    clearAll,
+    isFiltering,
+  } = useFilter(products, {
+    searchFields: ['name', 'category'],
+    debounceMs: 200,      // Debounce heavy text search
+    useTransition: true,   // Non-blocking concurrent rendering
+    urlSync: true,        // Sync query & filters with URL
   });
 
   return (
@@ -415,6 +395,7 @@ function ProductList({ products }) {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
+      {isFiltering && <span>Filtering...</span>}
 
       <select
         value={filters.category ?? ''}
@@ -438,8 +419,6 @@ function ProductList({ products }) {
 ### Return Value
 
 ```ts
-type FilterKey<T> = (keyof T & string) | (string & {});
-
 interface UseFilterReturn<T, K extends string = FilterKey<T>> {
   filteredItems: T[];
   query: string;
@@ -449,19 +428,21 @@ interface UseFilterReturn<T, K extends string = FilterKey<T>> {
   clearFilter: (key: K) => void;
   clearFilters: () => void;
   clearAll: () => void;
+  isFiltering: boolean;
 }
 ```
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `filteredItems` | `T[]` | The array containing only items that match the query and all active filters. If no filters are active, returns the original array reference. |
+| `filteredItems` | `T[]` | The array containing only items that match the query and all active filters. Returns original array reference if no filters are active. |
 | `query` | `string` | The current global text search query. |
 | `setQuery` | `(query: string) => void` | Update the global search query. |
 | `filters` | `Partial<Record<K, unknown>>` | The currently active structured filter values. |
 | `setFilter` | `(key: K, value: unknown) => void` | Set a filter value for a field or custom filter key. Passing `undefined` clears that filter. |
 | `clearFilter` | `(key: K) => void` | Remove the filter for a specific key. |
 | `clearFilters` | `() => void` | Remove all field/structured filters (keeps the global text query). |
-| `clearAll` | `() => void` | Reset both the global query and all filters. |
+| `clearAll` | `() => void` | Reset both the global query and all filters immediately. |
+| `isFiltering` | `boolean` | `true` while a debounce timer or React 18/19 transition is pending. |
 
 ### Options
 
@@ -470,60 +451,54 @@ interface UseFilterOptions<T, K extends string = FilterKey<T>> {
   /** Default search query. */
   initialQuery?: string;
   /** Default structured filter field values (used on initial mount). */
-  initialFilters?: Partial<Record<K, unknown>>;
+  initialFilters?: Partial<Record<K | FilterKey<T>, unknown>>;
   /** Custom filter/matching predicate functions for specific keys of T or custom filter keys. */
-  customFilters?: Partial<Record<K, (item: T, filterValue: any) => boolean>>;
+  customFilters?: Partial<Record<K | FilterKey<T>, (item: T, filterValue: any) => boolean>>;
   /** Optional custom text search fields. Defaults to all string/number properties discovered across items. */
   searchFields?: Array<keyof T>;
+  /** Debounce delay in milliseconds for global text search. Defaults to 0 (synchronous filtering). */
+  debounceMs?: number;
+  /** Whether to use React 18/19 startTransition to keep UI non-blocking during heavy filtering. Defaults to false. */
+  useTransition?: boolean;
+  /** URL Search Params sync configuration. Can be a boolean flag or FilterUrlSyncOptions object. */
+  urlSync?: boolean | FilterUrlSyncOptions<K | FilterKey<T>>;
 }
 ```
 
-### Global Text Search
+### URL Synchronization
 
-The global `query` performs a case-insensitive substring search across the configured `searchFields`. If `searchFields` is omitted, the hook automatically inspects a sample of up to 20 items to discover all keys containing `string` or `number` values.
-
-```tsx
-// Explicit search fields
-useFilter(items, { searchFields: ['title', 'author'] });
-
-// Auto-discovered search fields
-useFilter(items);
-```
-
-The search is **inclusive OR**: an item matches if *any* of the search fields contain the query string.
-
-### Field-Specific Filters & Synthetic Filter Keys
-
-Field filters perform exact matching by default. You can also use synthetic/custom filter keys that do not exist directly on item properties (e.g. `'priceRange'`, `'createdBetween'`) alongside `customFilters`:
+`useFilter` bi-directionally synchronizes search queries and structured filters to the URL:
 
 ```tsx
-setFilter('status', 'active');     // keyof Product
-setFilter('category', 'books');    // keyof Product
-setFilter('inStock', true);        // keyof Product
-setFilter('priceRange', [20, 100]); // custom/synthetic filter key
+const { filteredItems, query, filters } = useFilter(products, {
+  urlSync: {
+    enabled: true,
+    queryParam: 'q',                      // default: 'q'
+    paramMap: { category: 'cat' },        // Map internal filter key to custom URL query name
+    historyMode: 'replace',               // default: 'replace'
+    keepOtherParams: true,                // default: true
+  },
+});
 ```
 
-To clear a filter, pass `undefined` or call `clearFilter(key)`:
+### Debounce & React 18/19 `useTransition`
 
-```tsx
-setFilter('status', undefined);
-// or
-clearFilter('status');
-```
+When filtering large datasets (100k+ records):
+- **`debounceMs`**: Delays filter execution until the user stops typing, ensuring input fields never lag.
+- **`useTransition: true`**: Marks filter calculations as non-blocking React transitions, ensuring the UI stays at 60 FPS.
+- **`isFiltering`**: Provides an immediate loading state for spinners and status badges while computing.
 
-### Custom Filter Predicates
-
-For ranges, multi-select tags, or complex predicates, provide custom filter functions:
+### Custom Filter Predicates & Synthetic Keys
 
 ```tsx
 const { filteredItems, setFilter } = useFilter(products, {
   customFilters: {
-    // Price range predicate
+    // Synthetic key for numeric range
     priceRange: (item, range) => {
       const [min, max] = range as [number, number];
       return item.price >= min && item.price <= max;
     },
-    // Tag matching: item.tags is an array, filterValue is a string
+    // Array tag inclusion
     tags: (item, tag) => item.tags.includes(tag as string),
     // Date range predicate
     createdAt: (item, range) => {
@@ -533,65 +508,56 @@ const { filteredItems, setFilter } = useFilter(products, {
   },
 });
 
-// Usage
 setFilter('priceRange', [10, 100]);
 setFilter('tags', 'react');
 ```
-
-### Smart Equality & Date Matching
-
-Default field filters perform smart equality checks:
-- Compares `Date` objects with `Date` objects, ISO strings, or numeric timestamps.
-- Uses `Object.is` for exact primitive matching (accurately handles `NaN` and signs).
 
 ---
 
 ## Composing the Hooks
 
-The three hooks are designed to work together in a pipeline: **filter → sort → paginate**. Because each hook is pure and memoized, you can chain them with minimal overhead:
+The three hooks compose together seamlessly into a high-performance **Filter → Sort → Paginate** pipeline:
 
 ```tsx
 import { usePaginate, useSort, useFilter } from '@omariyassine/react-list-hooks';
 
 function DataTable({ data }) {
   // 1. Filter first (reduces the dataset)
-  const { filteredItems, query, setQuery, filters, setFilter, clearAll } = useFilter(data, {
+  const { filteredItems, query, setQuery, filters, setFilter, clearAll, isFiltering } = useFilter(data, {
     searchFields: ['name', 'email'],
+    debounceMs: 150,
+    useTransition: true,
+    urlSync: true,
   });
 
   // 2. Sort the filtered results
-  const { sortedItems, toggleSort, getSortIndicator } = useSort(filteredItems, {
+  const { sortedItems, toggleSort, getSortIndicator, isSorting } = useSort(filteredItems, {
     initialKey: 'name',
+    useTransition: true,
+    urlSync: true,
   });
 
   // 3. Paginate the sorted results
   const page = usePaginate(sortedItems, {
     pageSize: 10,
+    siblingCount: 1,
+    boundaryCount: 1,
     urlSync: true,
   });
 
   return (
     <div>
-      {/* Search */}
       <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..." />
+      {(isFiltering || isSorting) && <span>Updating...</span>}
 
-      {/* Filters */}
-      <select value={filters.role ?? ''} onChange={(e) => setFilter('role', e.target.value || undefined)}>
-        <option value="">All Roles</option>
-        <option value="admin">Admin</option>
-        <option value="user">User</option>
-      </select>
-      <button onClick={clearAll}>Clear</button>
-
-      {/* Table */}
       <table>
         <thead>
           <tr>
             <th onClick={() => toggleSort('name')}>
-              Name {getSortIndicator('name') && (getSortIndicator('name') === 'asc' ? '▲' : '▼')}
+              Name {getSortIndicator('name') === 'asc' ? '▲' : getSortIndicator('name') === 'desc' ? '▼' : ''}
             </th>
             <th onClick={() => toggleSort('email')}>
-              Email {getSortIndicator('email') && (getSortIndicator('email') === 'asc' ? '▲' : '▼')}
+              Email {getSortIndicator('email') === 'asc' ? '▲' : getSortIndicator('email') === 'desc' ? '▼' : ''}
             </th>
           </tr>
         </thead>
@@ -605,18 +571,28 @@ function DataTable({ data }) {
         </tbody>
       </table>
 
-      {/* Pagination */}
+      {/* Windowed pagination controls with ellipses */}
       <div className="pagination">
         <button onClick={page.prev} disabled={!page.hasPrev}>Previous</button>
-        <span>Page {page.currentPage} of {page.totalPages}</span>
+        {page.paginationRange.map((item, idx) =>
+          item === 'ellipsis' ? (
+            <span key={`ellipsis-${idx}`}>...</span>
+          ) : (
+            <button
+              key={item}
+              className={page.currentPage === item ? 'active' : ''}
+              onClick={() => page.goToPage(item)}
+            >
+              {item}
+            </button>
+          )
+        )}
         <button onClick={page.next} disabled={!page.hasNext}>Next</button>
       </div>
     </div>
   );
 }
 ```
-
-Because each hook memoizes its output and preserves reference equality when inputs are unchanged, React only re-renders downstream consumers when the actual derived data changes.
 
 ---
 
@@ -639,42 +615,22 @@ const { sortedItems } = useSort(users, { initialKey: 'name' });
 const { filteredItems } = useFilter(users, { searchFields: ['name', 'email'] });
 ```
 
-TypeScript will autocomplete keys like `'name'`, `'email'`, and `'role'` because the generic `T` is inferred from the `users` array. Custom comparators and filter predicates are also fully typed:
-
-```tsx
-useSort(users, {
-  comparators: {
-    // TypeScript knows 'a' and 'b' are User
-    name: (a, b) => a.name.localeCompare(b.name),
-  },
-});
-
-useFilter(users, {
-  customFilters: {
-    // TypeScript knows 'item' is User and 'filterValue' can be any value
-    role: (item, filterValue) => item.role === filterValue,
-    // Custom/synthetic keys are also allowed with full safety
-    createdBetween: (item, range) => {
-      const [start, end] = range as [Date, Date];
-      return item.createdAt >= start && item.createdAt <= end;
-    },
-  },
-});
-```
-
 All public types are exported from the package entry point:
 
 ```ts
 import type {
   UsePaginateOptions,
   UsePaginateReturn,
+  PaginationRangeItem,
+  PaginateUrlSyncOptions,
   UseSortOptions,
   UseSortReturn,
+  SortDirection,
+  SortUrlSyncOptions,
   UseFilterOptions,
   UseFilterReturn,
   FilterKey,
-  SortDirection,
-  UrlSyncOptions,
+  FilterUrlSyncOptions,
 } from '@omariyassine/react-list-hooks';
 ```
 
