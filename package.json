@@ -1,6 +1,6 @@
 {
 	"name": "@omariyassine/react-list-hooks",
-	"version": "0.2.4",
+	"version": "0.3.0",
 	"description": "A generic, high-performance collection of React hooks for paginating, sorting, and filtering arrays with URL synchronization and 100k+ item support",
 	"type": "module",
 	"main": "./dist/index.cjs",
