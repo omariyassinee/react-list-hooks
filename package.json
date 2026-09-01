@@ -55,6 +55,16 @@
 				"types": "./dist/use-sort.d.cts",
 				"default": "./dist/use-sort.cjs"
 			}
+		},
+		"./use-list": {
+			"import": {
+				"types": "./dist/use-list.d.ts",
+				"default": "./dist/use-list.js"
+			},
+			"require": {
+				"types": "./dist/use-list.d.cts",
+				"default": "./dist/use-list.cjs"
+			}
 		}
 	},
 	"files": [
@@ -91,6 +101,8 @@
 		"filter",
 		"filtering",
 		"useFilter",
+		"list",
+		"useList",
 		"url-sync"
 	],
 	"license": "MIT"

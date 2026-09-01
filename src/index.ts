@@ -1,6 +1,7 @@
 export { usePaginate } from './use-paginate';
 export { useFilter } from './use-filter';
 export { useSort } from './use-sort';
+export { useList } from './use-list';
 
 export type {
 	UrlSyncOptions,
@@ -15,4 +16,7 @@ export type {
 	FilterUrlSyncOptions,
 	UseFilterOptions,
 	UseFilterReturn,
+	ListUrlSyncOptions,
+	UseListOptions,
+	UseListReturn,
 } from './types';
