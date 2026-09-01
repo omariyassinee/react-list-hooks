@@ -1,6 +1,6 @@
 # @omariyassine/react-list-hooks
 
-A lightweight, zero-dependency (peer React only) collection of generic React hooks for managing list state — pagination, sorting, and filtering. Each hook is composable, type-safe, and designed to handle massive datasets (100,000+ items) with high performance and optional URL state synchronization.
+A lightweight, zero-dependency (peer React only) collection of generic React hooks for managing list state — pagination, sorting, and filtering. Each hook is composable, type-safe, and designed to handle massive datasets (100,000+ items) with high performance and optional URL state synchronization. Includes a `useList` master pipeline hook that orchestrates all three stages into a single coordinated call.
 
 ---
 
@@ -38,7 +38,14 @@ A lightweight, zero-dependency (peer React only) collection of generic React hoo
   - [Field-Specific Filters & Synthetic Filter Keys](#field-specific-filters--synthetic-filter-keys)
   - [Custom Filter Predicates](#custom-filter-predicates)
   - [Smart Equality & Date Matching](#smart-equality--date-matching)
-- [Composing the Hooks](#composing-the-hooks)
+- [`useList`](#uselist)
+  - [Basic Usage](#basic-usage-3)
+  - [Return Value](#return-value-3)
+  - [Options](#options-3)
+  - [Automatic Page Reset](#automatic-page-reset)
+  - [Unified URL Synchronization](#unified-url-synchronization)
+  - [Disabling Pipeline Stages](#disabling-pipeline-stages)
+- [Composing the Hooks (Manual)](#composing-the-hooks-manual)
 - [TypeScript](#typescript)
 - [License](#license)
 
@@ -60,13 +67,14 @@ Requires React >= 18 as a peer dependency.
 
 ## Overview
 
-The package exports three independent hooks that can be used alone or composed together in a pipeline (**Filter → Sort → Paginate**):
+The package exports four hooks — three independent primitives that can be used alone, plus a master pipeline hook that composes them together (**Filter → Sort → Paginate**):
 
 | Hook | Purpose |
 |------|---------|
 | `usePaginate` | Slice an array into pages, navigate with windowed range (`paginationRange`), sync state to the URL, and generate shareable links. |
 | `useSort` | Sort an array with automatic type-aware comparison, Schwartzian transform for 100k+ speed, custom comparators, `isSorting`, and URL sync. |
 | `useFilter` | Filter an array by a global text query and/or structured filters with debouncing, `isFiltering`, `useTransition`, and URL sync. |
+| **`useList`** | **Master pipeline hook** that composes `useFilter` → `useSort` → `usePaginate` into a single call with automatic page-1 reset, unified URL sync, and `resetAll()`. |
 
 All hooks are fully typed with generics and work with any object shape.
 
@@ -78,12 +86,13 @@ In addition to importing from the package root, direct subpath imports are avail
 
 ```tsx
 // Root import (all hooks & types)
-import { usePaginate, useSort, useFilter } from '@omariyassine/react-list-hooks';
+import { usePaginate, useSort, useFilter, useList } from '@omariyassine/react-list-hooks';
 
 // Individual subpath imports
 import { usePaginate } from '@omariyassine/react-list-hooks/use-paginate';
 import { useSort } from '@omariyassine/react-list-hooks/use-sort';
 import { useFilter } from '@omariyassine/react-list-hooks/use-filter';
+import { useList } from '@omariyassine/react-list-hooks/use-list';
 ```
 
 ---
@@ -514,9 +523,231 @@ setFilter('tags', 'react');
 
 ---
 
-## Composing the Hooks
+## `useList`
 
-The three hooks compose together seamlessly into a high-performance **Filter → Sort → Paginate** pipeline:
+`useList` is the **master pipeline hook** that composes `useFilter` → `useSort` → `usePaginate` into a single coordinated call. It solves three problems that arise when chaining the hooks manually:
+
+1. **Automatic page-1 reset** — When the user changes a search query, filter, or sort, pagination automatically resets to page 1.
+2. **Unified URL sync** — A single `urlSync` config distributes params across all three stages.
+3. **Unified reset** — `resetAll()` clears all filters, sorting, and pagination in one call.
+
+### Basic Usage
+
+```tsx
+import { useList } from '@omariyassine/react-list-hooks';
+
+function DataTable({ data }) {
+  const {
+    data: page,
+    query, setQuery,
+    filters, setFilter,
+    toggleSort, getSortIndicator,
+    isProcessing,
+    resetAll,
+  } = useList(data, {
+    filter: {
+      searchFields: ['name', 'email'],
+      debounceMs: 150,
+    },
+    sort: {
+      initialKey: 'name',
+      initialDirection: 'asc',
+    },
+    paginate: {
+      pageSize: 10,
+      siblingCount: 1,
+    },
+    urlSync: true,
+  });
+
+  return (
+    <div>
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..." />
+      {isProcessing && <span>Updating...</span>}
+      <button onClick={resetAll}>Reset All</button>
+
+      <table>
+        <thead>
+          <tr>
+            <th onClick={() => toggleSort('name')}>
+              Name {getSortIndicator('name') === 'asc' ? '▲' : getSortIndicator('name') === 'desc' ? '▼' : ''}
+            </th>
+            <th onClick={() => toggleSort('email')}>
+              Email {getSortIndicator('email') === 'asc' ? '▲' : getSortIndicator('email') === 'desc' ? '▼' : ''}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {page.map((user) => (
+            <tr key={user.id}>
+              <td>{user.name}</td>
+              <td>{user.email}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="pagination">
+        <button onClick={page.prev} disabled={!page.hasPrev}>Previous</button>
+        {page.paginationRange.map((item, idx) =>
+          item === 'ellipsis' ? (
+            <span key={`ellipsis-${idx}`}>...</span>
+          ) : (
+            <button
+              key={item}
+              className={page.currentPage === item ? 'active' : ''}
+              onClick={() => page.goToPage(item)}
+            >
+              {item}
+            </button>
+          )
+        )}
+        <button onClick={page.next} disabled={!page.hasNext}>Next</button>
+      </div>
+    </div>
+  );
+}
+```
+
+### Return Value
+
+`UseListReturn<T, K>` returns a plain object with the following properties:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| **Pipeline output** | | |
+| `data` | `UsePaginateReturn<T>` | The current page slice (array-augmented, mappable). |
+| **Filter access** | | |
+| `query` | `string` | Current global text search query. |
+| `setQuery` | `(query: string) => void` | Update the search query. Resets to page 1. |
+| `filters` | `Partial<Record<K, unknown>>` | Active structured filter values. |
+| `setFilter` | `(key, value) => void` | Set a filter value. Resets to page 1. |
+| `clearFilter` | `(key) => void` | Remove a specific filter. Resets to page 1. |
+| `clearFilters` | `() => void` | Remove all filters (keeps query). Resets to page 1. |
+| **Sort access** | | |
+| `sortKey` | `keyof T \| null` | Current sort key. |
+| `sortDirection` | `'asc' \| 'desc' \| null` | Current sort direction. |
+| `setSort` | `(key, direction?) => void` | Sort by a key. Resets to page 1. |
+| `toggleSort` | `(key) => void` | Cycle sort state (asc → desc → clear). Resets to page 1. |
+| `clearSort` | `() => void` | Clear sorting. Resets to page 1. |
+| `getSortIndicator` | `(key) => SortDirection \| null` | Get sort direction for a key. |
+| **Paginate access** | | |
+| `currentPage` | `number` | Current page (1-indexed). |
+| `totalPages` | `number` | Total pages. |
+| `totalItems` | `number` | Total items after filter+sort. |
+| `pageSize` | `number` | Current page size. |
+| `hasNext` / `hasPrev` | `boolean` | Navigation availability. |
+| `next` / `prev` | `() => void` | Page navigation. |
+| `goToPage` | `(page) => void` | Jump to a page. |
+| `goToStart` / `goToEnd` | `() => void` | Jump to first/last page. |
+| `setPageSize` | `(size) => void` | Change page size. |
+| `pageNumbers` | `number[]` | All page numbers. |
+| `paginationRange` | `Array<number \| 'ellipsis'>` | Windowed pagination range. |
+| **Pipeline metadata** | | |
+| `filteredCount` | `number` | Number of items after filtering. |
+| `isProcessing` | `boolean` | `true` while filter or sort debounce/transition is pending. |
+| **Unified actions** | | |
+| `resetAll` | `() => void` | Clear all filters, sorting, and reset to page 1. |
+
+### Options
+
+```ts
+interface UseListOptions<T, K extends string = string> {
+  /** Configuration for the filter stage. Omit to disable filtering. */
+  filter?: Omit<UseFilterOptions<T, K>, 'urlSync'>;
+  /** Configuration for the sort stage. Omit to disable sorting. */
+  sort?: Omit<UseSortOptions<T>, 'urlSync'>;
+  /** Configuration for the paginate stage. Omit to disable pagination config. */
+  paginate?: Omit<UsePaginateOptions, 'urlSync'>;
+  /** Unified URL sync configuration across all pipeline stages. */
+  urlSync?: boolean | ListUrlSyncOptions<K>;
+}
+
+interface ListUrlSyncOptions<K extends string = string> {
+  enabled?: boolean;
+  historyMode?: 'replace' | 'push';    // default: 'replace'
+  keepOtherParams?: boolean;            // default: true
+
+  // Filter params
+  queryParam?: string;                  // default: 'q'
+  filterParamMap?: Partial<Record<K, string>>;
+
+  // Sort params
+  sortKeyParam?: string;                // default: 'sortBy'
+  directionParam?: string;              // default: 'sortDir'
+
+  // Paginate params
+  pageParam?: string;                   // default: 'page'
+  pageSizeParam?: string;               // default: 'pageSize'
+  syncPageSize?: boolean;               // default: true
+}
+```
+
+### Automatic Page Reset
+
+When using the individual hooks manually, changing a filter or sort while on page 7 leaves you on page 7 of the new results (which may only have 2 pages). `useList` fixes this automatically:
+
+```tsx
+const list = useList(data, {
+  filter: {},
+  sort: {},
+  paginate: { pageSize: 10 },
+});
+
+// Navigate to page 5
+list.goToPage(5);    // currentPage = 5
+
+// Change a filter → automatically resets to page 1
+list.setQuery('react');  // currentPage = 1 ✓
+
+// Pagination actions do NOT trigger reset
+list.next();             // currentPage = 2 (normal navigation)
+```
+
+### Unified URL Synchronization
+
+Instead of configuring `urlSync` on each hook separately, `useList` accepts a single config that distributes params:
+
+```tsx
+const list = useList(data, {
+  filter: { searchFields: ['name'] },
+  sort: { initialKey: 'name' },
+  paginate: { pageSize: 10 },
+  urlSync: {
+    enabled: true,
+    queryParam: 'search',       // filter query → ?search=...
+    sortKeyParam: 'sort',       // sort key → ?sort=...
+    directionParam: 'order',    // sort direction → ?order=...
+    pageParam: 'p',             // page → ?p=...
+    pageSizeParam: 'limit',     // page size → ?limit=...
+  },
+});
+// URL: ?search=react&sort=name&order=asc&p=1&limit=10
+```
+
+### Disabling Pipeline Stages
+
+Omitting `filter`, `sort`, or `paginate` from the options object skips that stage:
+
+```tsx
+// Sort + Paginate only (no filtering)
+const list = useList(data, {
+  sort: { initialKey: 'price', initialDirection: 'desc' },
+  paginate: { pageSize: 25 },
+});
+
+// Filter + Paginate only (no sorting)
+const list = useList(data, {
+  filter: { searchFields: ['name'] },
+  paginate: { pageSize: 20 },
+});
+```
+
+---
+
+## Composing the Hooks (Manual)
+
+The three primitive hooks can also be composed together manually into a **Filter → Sort → Paginate** pipeline. Use this approach when you need full control over each stage:
 
 ```tsx
 import { usePaginate, useSort, useFilter } from '@omariyassine/react-list-hooks';
@@ -594,6 +825,8 @@ function DataTable({ data }) {
 }
 ```
 
+> **Note**: When composing manually, you'll need to handle page-1 resets yourself (e.g. calling `page.goToStart()` when filters change). `useList` handles this automatically.
+
 ---
 
 ## TypeScript
@@ -613,6 +846,7 @@ interface User {
 const page = usePaginate(users, { pageSize: 10 });
 const { sortedItems } = useSort(users, { initialKey: 'name' });
 const { filteredItems } = useFilter(users, { searchFields: ['name', 'email'] });
+const list = useList(users, { filter: { searchFields: ['name'] }, paginate: { pageSize: 10 } });
 ```
 
 All public types are exported from the package entry point:
@@ -622,7 +856,7 @@ import type {
   UsePaginateOptions,
   UsePaginateReturn,
   PaginationRangeItem,
-  PaginateUrlSyncOptions,
+  UrlSyncOptions,
   UseSortOptions,
   UseSortReturn,
   SortDirection,
@@ -631,6 +865,9 @@ import type {
   UseFilterReturn,
   FilterKey,
   FilterUrlSyncOptions,
+  UseListOptions,
+  UseListReturn,
+  ListUrlSyncOptions,
 } from '@omariyassine/react-list-hooks';
 ```
 
@@ -639,3 +876,4 @@ import type {
 ## License
 
 MIT
+
