@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { getUrlParamNumber } from './url-params';
+
 import type { PaginationRangeItem, UrlSyncOptions, UsePaginateOptions, UsePaginateReturn } from './types';
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -25,6 +27,11 @@ function range(start: number, end: number): number[] {
 	return Array.from({ length }, (_, i) => start + i);
 }
 
+/**
+ * Windowed pagination range with ellipses, ported from MUI's usePagination
+ * clamping math. The current page always keeps both siblings near boundaries,
+ * and an ellipsis only appears when it genuinely hides pages.
+ */
 function computePaginationRange(
 	totalPages: number,
 	currentPage: number,
@@ -40,52 +47,57 @@ function computePaginationRange(
 		return range(1, totalPages);
 	}
 
-	const leftSiblingIndex = Math.max(currentPage - safeSiblings, 1);
-	const rightSiblingIndex = Math.min(currentPage + safeSiblings, totalPages);
+	const startPages = range(1, Math.min(safeBoundaries, totalPages));
+	const endPages = range(Math.max(totalPages - safeBoundaries + 1, safeBoundaries + 1), totalPages);
 
-	const showLeftEllipsis = leftSiblingIndex > safeBoundaries + 2;
-	const showRightEllipsis = rightSiblingIndex < totalPages - (safeBoundaries + 1);
+	const siblingsStart = Math.max(
+		Math.min(
+			// Natural start
+			currentPage - safeSiblings,
+			// Lower boundary when page is high
+			totalPages - safeBoundaries - safeSiblings * 2 - 1,
+		),
+		// Greater than startPages
+		safeBoundaries + 2,
+	);
 
-	const startPages = range(1, safeBoundaries);
-	const endPages = range(totalPages - safeBoundaries + 1, totalPages);
+	const siblingsEnd = Math.min(
+		Math.max(
+			// Natural end
+			currentPage + safeSiblings,
+			// Upper boundary when page is low
+			safeBoundaries + safeSiblings * 2 + 2,
+		),
+		// Less than endPages
+		totalPages - safeBoundaries - 1,
+	);
 
-	if (!showLeftEllipsis && showRightEllipsis) {
-		const leftItemCount = safeBoundaries + 2 * safeSiblings + 1;
-		const leftRange = range(1, leftItemCount);
-		return [...leftRange, 'ellipsis', ...endPages];
-	}
+	// When an ellipsis would hide nothing, emit the adjacent filler page instead.
+	const startFiller: PaginationRangeItem[] =
+		siblingsStart > safeBoundaries + 2
+			? ['ellipsis']
+			: safeBoundaries + 1 < totalPages - safeBoundaries
+				? [safeBoundaries + 1]
+				: [];
+	const endFiller: PaginationRangeItem[] =
+		siblingsEnd < totalPages - safeBoundaries - 1
+			? ['ellipsis']
+			: totalPages - safeBoundaries > safeBoundaries
+				? [totalPages - safeBoundaries]
+				: [];
 
-	if (showLeftEllipsis && !showRightEllipsis) {
-		const rightItemCount = safeBoundaries + 2 * safeSiblings + 1;
-		const rightRange = range(totalPages - rightItemCount + 1, totalPages);
-		return [...startPages, 'ellipsis', ...rightRange];
-	}
-
-	const middleRange = range(leftSiblingIndex, rightSiblingIndex);
-	return [...startPages, 'ellipsis', ...middleRange, 'ellipsis', ...endPages];
-}
-
-function getUrlParam(key: string): number | null {
-	if (typeof window === 'undefined') return null;
-	try {
-		const searchParams = new URLSearchParams(window.location.search);
-		const val = searchParams.get(key);
-		if (val === null) return null;
-		const num = parseInt(val, 10);
-		return Number.isNaN(num) ? null : num;
-	} catch {
-		return null;
-	}
+	return [...startPages, ...startFiller, ...range(siblingsStart, siblingsEnd), ...endFiller, ...endPages];
 }
 
 function getInitialPageSize(
 	options?: UsePaginateOptions,
 	isUrlSyncEnabled?: boolean,
 	pageSizeParam: string = 'pageSize',
+	syncPageSize: boolean = true,
 ): number {
 	const defaultSize = sanitizePageSize(options?.pageSize, DEFAULT_PAGE_SIZE);
-	if (!isUrlSyncEnabled) return defaultSize;
-	const fromUrl = getUrlParam(pageSizeParam);
+	if (!isUrlSyncEnabled || !syncPageSize) return defaultSize;
+	const fromUrl = getUrlParamNumber(pageSizeParam);
 	return fromUrl !== null ? sanitizePageSize(fromUrl, defaultSize) : defaultSize;
 }
 
@@ -105,11 +117,17 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 	const syncPageSize = urlSyncConfig.syncPageSize ?? true;
 	const historyMode = urlSyncConfig.historyMode ?? 'replace';
 	const keepOtherParams = urlSyncConfig.keepOtherParams ?? true;
+	const preserveParams = urlSyncConfig.preserveParams;
 
 	// Initialize pageSize (read from URL if enabled)
 	const [pageSize, setPageSizeState] = useState(() =>
-		getInitialPageSize(options, isUrlSyncEnabled, pageSizeParam),
+		getInitialPageSize(options, isUrlSyncEnabled, pageSizeParam, syncPageSize),
 	);
+
+	// Initial pageSize for resetPageSize — the sanitized default (options.pageSize
+	// or 10), NOT the URL-restored value, so resetPageSize restores the intended
+	// baseline rather than freezing whatever the URL happened to contain.
+	const initialPageSizeRef = useRef(sanitizePageSize(options?.pageSize, DEFAULT_PAGE_SIZE));
 
 	// Sync pageSize when options.pageSize prop updates dynamically
 	const prevPageSizePropRef = useRef(options?.pageSize);
@@ -140,7 +158,7 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 		const maxPage = computeTotalPages(items.length, pageSize);
 		let initial = options?.initialPage ?? 1;
 		if (isUrlSyncEnabled) {
-			const fromUrl = getUrlParam(pageParam);
+			const fromUrl = getUrlParamNumber(pageParam);
 			if (fromUrl !== null) {
 				initial = fromUrl;
 			}
@@ -162,16 +180,30 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 	}, [effectivePage, currentPage]);
 
 	// Sync state to URL search parameters
+	const isFirstUrlSyncRef = useRef(true);
 	useEffect(() => {
 		if (!isUrlSyncEnabled || typeof window === 'undefined') return;
 
 		try {
 			const currentSearchParams = new URLSearchParams(window.location.search);
-			const searchParams = keepOtherParams ? new URLSearchParams(currentSearchParams) : new URLSearchParams();
+			// When keepOtherParams is false, still re-copy params owned by other
+			// pipeline stages (populated via preserveParams by useList) so sibling
+			// stages don't wipe each other's state.
+			const searchParams = new URLSearchParams();
+			if (keepOtherParams) {
+				for (const [key, value] of currentSearchParams) searchParams.set(key, value);
+			} else if (preserveParams) {
+				for (const name of preserveParams) {
+					const value = currentSearchParams.get(name);
+					if (value !== null) searchParams.set(name, value);
+				}
+			}
 
 			searchParams.set(pageParam, String(effectivePage));
 			if (syncPageSize) {
 				searchParams.set(pageSizeParam, String(pageSize));
+			} else {
+				searchParams.delete(pageSizeParam);
 			}
 
 			const queryString = searchParams.toString();
@@ -180,7 +212,11 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 			const targetPathWithSearch = window.location.pathname + newSearch + window.location.hash;
 
 			if (currentPathWithSearch !== targetPathWithSearch) {
-				if (historyMode === 'push') {
+				// Never push a history entry for the initial normalization write —
+				// otherwise mounting with historyMode 'push' pollutes history.
+				const mode = isFirstUrlSyncRef.current ? 'replace' : historyMode;
+				isFirstUrlSyncRef.current = false;
+				if (mode === 'push') {
 					window.history.pushState(window.history.state, '', targetPathWithSearch);
 				} else {
 					window.history.replaceState(window.history.state, '', targetPathWithSearch);
@@ -198,20 +234,20 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 		syncPageSize,
 		historyMode,
 		keepOtherParams,
+		preserveParams,
 	]);
-
 	// Handle browser back/forward buttons (popstate)
 	useEffect(() => {
 		if (!isUrlSyncEnabled || typeof window === 'undefined') return;
 
 		const handlePopState = () => {
 			const maxPages = totalPagesRef.current;
-			const pageFromUrl = getUrlParam(pageParam);
+			const pageFromUrl = getUrlParamNumber(pageParam);
 			const defaultPage = clamp(optionsRef.current?.initialPage ?? 1, 1, maxPages);
 			setCurrentPage(pageFromUrl !== null ? clamp(pageFromUrl, 1, maxPages) : defaultPage);
 
 			if (syncPageSize) {
-				const sizeFromUrl = getUrlParam(pageSizeParam);
+				const sizeFromUrl = getUrlParamNumber(pageSizeParam);
 				const defaultSize = sanitizePageSize(optionsRef.current?.pageSize, DEFAULT_PAGE_SIZE);
 				setPageSizeState(sizeFromUrl !== null ? sanitizePageSize(sizeFromUrl, defaultSize) : defaultSize);
 			}
@@ -246,17 +282,20 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 				const currentEffectivePage = effectivePageRef.current;
 
 				const p = targetPage !== undefined ? clamp(targetPage, 1, currentTotalPages) : currentEffectivePage;
-				const ps = targetPageSize !== undefined ? sanitizePageSize(targetPageSize, currentPageSize) : currentPageSize;
+				const ps =
+					targetPageSize !== undefined ? sanitizePageSize(targetPageSize, currentPageSize) : currentPageSize;
 
 				searchParams.set(pageParam, String(p));
-				searchParams.set(pageSizeParam, String(ps));
+				if (syncPageSize) {
+					searchParams.set(pageSizeParam, String(ps));
+				}
 				const qs = searchParams.toString();
 				return `${pathname}${qs ? `?${qs}` : ''}${hash}`;
 			} catch {
 				return '';
 			}
 		},
-		[pageParam, pageSizeParam, keepOtherParams],
+		[pageParam, pageSizeParam, keepOtherParams, syncPageSize],
 	);
 
 	// --- Derived data (memoized) ---
@@ -302,6 +341,18 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 		setCurrentPage(newPage);
 	}, []);
 
+	// Restore the initial pageSize (options.pageSize or the default of 10),
+	// preserving the first visible item like setPageSize does.
+	const resetPageSize = useCallback(() => {
+		const safeSize = initialPageSizeRef.current;
+		const firstVisibleIndex = (effectivePageRef.current - 1) * pageSizeRef.current;
+		const newTotalPages = computeTotalPages(totalItemsRef.current, safeSize);
+		const newPage = clamp(Math.floor(firstVisibleIndex / safeSize) + 1, 1, newTotalPages);
+
+		setPageSizeState(safeSize);
+		setCurrentPage(newPage);
+	}, []);
+
 	// --- Return: single useMemo with inline slice and status flags ---
 
 	return useMemo(() => {
@@ -328,6 +379,7 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 			goToStart,
 			goToEnd,
 			setPageSize,
+			resetPageSize,
 			pageNumbers,
 			paginationRange,
 			isUrlSyncEnabled,
@@ -348,6 +400,7 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 		goToStart,
 		goToEnd,
 		setPageSize,
+		resetPageSize,
 		pageNumbers,
 		paginationRange,
 		isUrlSyncEnabled,

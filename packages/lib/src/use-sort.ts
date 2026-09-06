@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import type { UseSortOptions, UseSortReturn, SortDirection, SortUrlSyncOptions } from './types';
 
+import { getUrlParamString } from './url-params';
+
 // Pre-instantiated Intl.Collator for high-performance natural sorting (avoids creating options objects during 100k+ comparisons)
 const defaultCollator =
 	typeof Intl !== 'undefined' && typeof Intl.Collator === 'function'
@@ -85,16 +87,6 @@ interface DecoratedSortItem<T> {
 	index: number;
 }
 
-function getUrlParamString(key: string): string | null {
-	if (typeof window === 'undefined') return null;
-	try {
-		const searchParams = new URLSearchParams(window.location.search);
-		return searchParams.get(key);
-	} catch {
-		return null;
-	}
-}
-
 function getInitialSortState<T>(
 	options?: UseSortOptions<T>,
 	isUrlSyncEnabled?: boolean,
@@ -113,9 +105,7 @@ function getInitialSortState<T>(
 			key = keyFromUrl as keyof T;
 			if (dirFromUrl === 'asc' || dirFromUrl === 'desc') {
 				direction = dirFromUrl;
-			} else {
-				direction = 'asc';
-			}
+			} else direction = 'asc';
 		}
 	}
 
@@ -145,6 +135,7 @@ export function useSort<T>(items: T[], options?: UseSortOptions<T>): UseSortRetu
 	const directionParam = urlSyncConfig.directionParam ?? 'sortDir';
 	const historyMode = urlSyncConfig.historyMode ?? 'replace';
 	const keepOtherParams = urlSyncConfig.keepOtherParams ?? true;
+	const preserveParams = urlSyncConfig.preserveParams;
 
 	const [sortState, setSortState] = useState<{
 		key: keyof T | null;
@@ -160,18 +151,9 @@ export function useSort<T>(items: T[], options?: UseSortOptions<T>): UseSortRetu
 	const activeSortKey = appliedSortState.direction === null ? null : appliedSortState.key;
 	const activeSortDirection = appliedSortState.direction;
 
-	// Refs for stable getSortIndicator callback
-	const sortKeyRef = useRef(sortKey);
-	sortKeyRef.current = sortKey;
-	const sortDirectionRef = useRef(sortDirection);
-	sortDirectionRef.current = sortDirection;
-
 	// Handle debounce / transition timing for sorting updates
 	useEffect(() => {
-		if (
-			sortState.key === appliedSortState.key &&
-			sortState.direction === appliedSortState.direction
-		) {
+		if (sortState.key === appliedSortState.key && sortState.direction === appliedSortState.direction) {
 			setIsDebouncing(false);
 			return;
 		}
@@ -206,16 +188,31 @@ export function useSort<T>(items: T[], options?: UseSortOptions<T>): UseSortRetu
 	}, [sortState, debounceMs, appliedSortState, useTransitionOption]);
 
 	// Sync state to URL search parameters
+	// Uses the *applied* (post-debounce) sort state so the URL never claims a
+	// sort that isn't yet reflected in sortedItems — consistent with useFilter,
+	// which syncs appliedQuery rather than the live query.
+	const isFirstUrlSyncRef = useRef(true);
 	useEffect(() => {
 		if (!isUrlSyncEnabled || typeof window === 'undefined') return;
 
 		try {
 			const currentSearchParams = new URLSearchParams(window.location.search);
-			const searchParams = keepOtherParams ? new URLSearchParams(currentSearchParams) : new URLSearchParams();
+			// When keepOtherParams is false, still re-copy params owned by other
+			// pipeline stages (populated via preserveParams by useList) so sibling
+			// stages don't wipe each other's state.
+			const searchParams = new URLSearchParams();
+			if (keepOtherParams) {
+				for (const [key, value] of currentSearchParams) searchParams.set(key, value);
+			} else if (preserveParams) {
+				for (const name of preserveParams) {
+					const value = currentSearchParams.get(name);
+					if (value !== null) searchParams.set(name, value);
+				}
+			}
 
-			if (sortKey !== null && sortDirection !== null) {
-				searchParams.set(sortKeyParam, String(sortKey));
-				searchParams.set(directionParam, sortDirection);
+			if (activeSortKey !== null && activeSortDirection !== null) {
+				searchParams.set(sortKeyParam, String(activeSortKey));
+				searchParams.set(directionParam, activeSortDirection);
 			} else {
 				searchParams.delete(sortKeyParam);
 				searchParams.delete(directionParam);
@@ -227,7 +224,11 @@ export function useSort<T>(items: T[], options?: UseSortOptions<T>): UseSortRetu
 			const targetPathWithSearch = window.location.pathname + newSearch + window.location.hash;
 
 			if (currentPathWithSearch !== targetPathWithSearch) {
-				if (historyMode === 'push') {
+				// Never push a history entry for the initial normalization write —
+				// otherwise mounting with historyMode 'push' pollutes history.
+				const mode = isFirstUrlSyncRef.current ? 'replace' : historyMode;
+				isFirstUrlSyncRef.current = false;
+				if (mode === 'push') {
 					window.history.pushState(window.history.state, '', targetPathWithSearch);
 				} else {
 					window.history.replaceState(window.history.state, '', targetPathWithSearch);
@@ -236,7 +237,16 @@ export function useSort<T>(items: T[], options?: UseSortOptions<T>): UseSortRetu
 		} catch {
 			// Ignore URL manipulation failures in restricted environments
 		}
-	}, [sortKey, sortDirection, isUrlSyncEnabled, sortKeyParam, directionParam, historyMode, keepOtherParams]);
+	}, [
+		activeSortKey,
+		activeSortDirection,
+		isUrlSyncEnabled,
+		sortKeyParam,
+		directionParam,
+		historyMode,
+		keepOtherParams,
+		preserveParams,
+	]);
 
 	// Handle popstate
 	useEffect(() => {
@@ -280,10 +290,12 @@ export function useSort<T>(items: T[], options?: UseSortOptions<T>): UseSortRetu
 		setIsDebouncing(false);
 	}, []);
 
-	// Stable callback — reads sort state from refs
-	const getSortIndicator = useCallback((key: keyof T): SortDirection | null => {
-		return sortKeyRef.current === key ? sortDirectionRef.current : null;
-	}, []);
+	const getSortIndicator = useCallback(
+		(key: keyof T): SortDirection | null => {
+			return sortKey === key ? sortDirection : null;
+		},
+		[sortKey, sortDirection],
+	);
 
 	// Memoized sorted items using the Schwartzian Transform (Decorate-Sort-Undecorate)
 	const sortedItems = useMemo(() => {
@@ -348,12 +360,25 @@ export function useSort<T>(items: T[], options?: UseSortOptions<T>): UseSortRetu
 			sortedItems,
 			sortKey,
 			sortDirection,
+			activeSortKey,
+			activeSortDirection,
 			setSort,
 			toggleSort,
 			clearSort,
 			getSortIndicator,
 			isSorting,
 		}),
-		[sortedItems, sortKey, sortDirection, setSort, toggleSort, clearSort, getSortIndicator, isSorting],
+		[
+			sortedItems,
+			sortKey,
+			sortDirection,
+			activeSortKey,
+			activeSortDirection,
+			setSort,
+			toggleSort,
+			clearSort,
+			getSortIndicator,
+			isSorting,
+		],
 	);
 }

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 
+import { getUrlParamString } from './url-params';
+
 import type { FilterKey, FilterUrlSyncOptions, UseFilterOptions, UseFilterReturn } from './types';
 
 function isMatch(itemVal: unknown, filterVal: unknown): boolean {
@@ -15,17 +17,17 @@ function isMatch(itemVal: unknown, filterVal: unknown): boolean {
 		const parsed = new Date(itemVal).getTime();
 		if (!Number.isNaN(parsed)) return parsed === filterVal.getTime();
 	}
-	return false;
-}
-
-function getUrlParamString(key: string): string | null {
-	if (typeof window === 'undefined') return null;
-	try {
-		const searchParams = new URLSearchParams(window.location.search);
-		return searchParams.get(key);
-	} catch {
-		return null;
+	// URL round-trip coercion: filter values restored from the URL arrive as
+	// strings. Coerce strictly so `?price=10` matches an item `price: 10`
+	// (rejects `'1e2'`, `' 10'`, `'10.0'` for `10`).
+	if (typeof itemVal === 'number' && typeof filterVal === 'string' && filterVal.trim() !== '') {
+		const n = Number(filterVal);
+		if (Number.isFinite(n) && String(n) === filterVal.trim()) return itemVal === n;
 	}
+	if (typeof itemVal === 'boolean' && (filterVal === 'true' || filterVal === 'false')) {
+		return itemVal === (filterVal === 'true');
+	}
+	return false;
 }
 
 function getInitialQuery(
@@ -43,22 +45,40 @@ function getInitialFilters<ActualKey extends string>(
 	initialFilters?: Partial<Record<ActualKey, unknown>>,
 	isUrlSyncEnabled?: boolean,
 	paramMap: Partial<Record<ActualKey, string>> = {},
+	restoreKeys?: Array<ActualKey>,
 ): Partial<Record<ActualKey, unknown>> {
 	const initial = initialFilters ?? {};
 	if (!isUrlSyncEnabled || typeof window === 'undefined') return initial;
+
+	// Keys eligible for URL restoration: mapped keys, keys pre-declared in
+	// initialFilters, and keys explicitly opted in via restoreKeys. Without
+	// this, params the hook itself wrote (unmapped keys) would be ignored on
+	// refresh — an asymmetric read/write path.
+	const restorable = new Set<string>([
+		...Object.keys(paramMap),
+		...Object.keys(initial),
+		...(restoreKeys ?? []),
+	]);
 
 	try {
 		const searchParams = new URLSearchParams(window.location.search);
 		const result: Partial<Record<ActualKey, unknown>> = { ...initial };
 
-		for (const [urlKey, urlVal] of searchParams.entries()) {
-			for (const [key, mappedName] of Object.entries(paramMap) as Array<[ActualKey, string]>) {
-				if (urlKey === mappedName) {
-					result[key] = urlVal;
-				}
+		// 1. Mapped keys: URL param name -> filter key (e.g. ?cat=Audio -> category)
+		for (const [filterKey, mappedName] of Object.entries(paramMap) as Array<[ActualKey, string]>) {
+			const urlVal = searchParams.get(mappedName);
+			if (urlVal !== null) {
+				result[filterKey] = urlVal;
 			}
-			if (urlKey in initial) {
-				(result as Record<string, unknown>)[urlKey] = urlVal;
+		}
+
+		// 2. Unmapped keys declared via initialFilters or restoreKeys: URL param
+		//    name is the filter key itself (e.g. ?category=Audio -> category).
+		for (const key of restorable) {
+			if (key in paramMap) continue; // already handled above
+			const urlVal = searchParams.get(key);
+			if (urlVal !== null) {
+				(result as Record<string, unknown>)[key] = urlVal;
 			}
 		}
 		return result;
@@ -79,9 +99,6 @@ export function useFilter<T, K extends string = string>(
 	const customFiltersRef = useRef(options?.customFilters);
 	customFiltersRef.current = options?.customFilters;
 
-	const searchFieldsRef = useRef(options?.searchFields);
-	searchFieldsRef.current = options?.searchFields;
-
 	const debounceMs = options?.debounceMs ?? 0;
 	const useTransitionOption = Boolean(options?.useTransition);
 
@@ -96,8 +113,14 @@ export function useFilter<T, K extends string = string>(
 		() => (urlSyncConfig.paramMap ?? {}) as Partial<Record<ActualKey, string>>,
 		[urlSyncConfig.paramMap],
 	);
+	const restoreKeys = urlSyncConfig.restoreKeys as Array<ActualKey> | undefined;
 	const historyMode = urlSyncConfig.historyMode ?? 'replace';
 	const keepOtherParams = urlSyncConfig.keepOtherParams ?? true;
+	const preserveParams = urlSyncConfig.preserveParams;
+
+	// Latest restoreKeys for the popstate handler (stable across renders)
+	const restoreKeysRef = useRef(restoreKeys);
+	restoreKeysRef.current = restoreKeys;
 
 	const [query, setQueryState] = useState(() =>
 		getInitialQuery(options?.initialQuery, isUrlSyncEnabled, queryParam),
@@ -110,8 +133,14 @@ export function useFilter<T, K extends string = string>(
 			options?.initialFilters as Partial<Record<ActualKey, unknown>> | undefined,
 			isUrlSyncEnabled,
 			paramMap,
+			restoreKeys,
 		),
 	);
+
+	// Param names this hook has previously written to the URL. Lets the sync
+	// effect delete params for filters that no longer exist in state (e.g.
+	// after clearFilter removed the key entirely) — including unmapped keys.
+	const writtenParamNamesRef = useRef<Set<string>>(new Set());
 
 	// Handle debounce / transition timing for text query
 	useEffect(() => {
@@ -150,12 +179,24 @@ export function useFilter<T, K extends string = string>(
 	}, [query, debounceMs, appliedQuery, useTransitionOption]);
 
 	// Sync state to URL search parameters
+	const isFirstUrlSyncRef = useRef(true);
 	useEffect(() => {
 		if (!isUrlSyncEnabled || typeof window === 'undefined') return;
 
 		try {
 			const currentSearchParams = new URLSearchParams(window.location.search);
-			const searchParams = keepOtherParams ? new URLSearchParams(currentSearchParams) : new URLSearchParams();
+			// When keepOtherParams is false, still re-copy params owned by other
+			// pipeline stages (populated via preserveParams by useList) so sibling
+			// stages don't wipe each other's state.
+			const searchParams = new URLSearchParams();
+			if (keepOtherParams) {
+				for (const [key, value] of currentSearchParams) searchParams.set(key, value);
+			} else if (preserveParams) {
+				for (const name of preserveParams) {
+					const value = currentSearchParams.get(name);
+					if (value !== null) searchParams.set(name, value);
+				}
+			}
 
 			if (appliedQuery.trim()) {
 				searchParams.set(queryParam, appliedQuery.trim());
@@ -172,19 +213,15 @@ export function useFilter<T, K extends string = string>(
 				}
 			}
 
-			// Clean up removed filters from query params
-			for (const [filterKey, mappedParam] of Object.entries(paramMap)) {
-				const paramName = (mappedParam as string) ?? filterKey;
+			// Clean up params for filters that are no longer active — including
+			// unmapped keys whose entries were deleted from state (clearFilter)
+			// and params written under a previous paramMap configuration.
+			for (const paramName of writtenParamNamesRef.current) {
 				if (!activeParamNames.has(paramName)) {
 					searchParams.delete(paramName);
 				}
 			}
-			for (const key of Object.keys(filters)) {
-				const paramName = paramMap[key as ActualKey] ?? key;
-				if (filters[key as ActualKey] === undefined) {
-					searchParams.delete(paramName);
-				}
-			}
+			writtenParamNamesRef.current = activeParamNames;
 
 			const queryString = searchParams.toString();
 			const newSearch = queryString ? `?${queryString}` : '';
@@ -192,7 +229,11 @@ export function useFilter<T, K extends string = string>(
 			const targetPathWithSearch = window.location.pathname + newSearch + window.location.hash;
 
 			if (currentPathWithSearch !== targetPathWithSearch) {
-				if (historyMode === 'push') {
+				// Never push a history entry for the initial normalization write —
+				// otherwise mounting with historyMode 'push' pollutes history.
+				const mode = isFirstUrlSyncRef.current ? 'replace' : historyMode;
+				isFirstUrlSyncRef.current = false;
+				if (mode === 'push') {
 					window.history.pushState(window.history.state, '', targetPathWithSearch);
 				} else {
 					window.history.replaceState(window.history.state, '', targetPathWithSearch);
@@ -209,6 +250,7 @@ export function useFilter<T, K extends string = string>(
 		paramMap,
 		historyMode,
 		keepOtherParams,
+		preserveParams,
 	]);
 
 	// Handle popstate events for back/forward navigation
@@ -227,6 +269,7 @@ export function useFilter<T, K extends string = string>(
 				optionsRef.current?.initialFilters as Partial<Record<ActualKey, unknown>> | undefined,
 				isUrlSyncEnabled,
 				paramMap,
+				restoreKeysRef.current,
 			);
 			setFilters(currentFilters);
 		};
@@ -241,6 +284,7 @@ export function useFilter<T, K extends string = string>(
 
 	const clearFilter = useCallback((key: ActualKey) => {
 		setFilters((prev) => {
+			if (!(key in prev)) return prev; // no-op when already absent
 			const next = { ...prev };
 			delete next[key];
 			return next;
@@ -262,19 +306,28 @@ export function useFilter<T, K extends string = string>(
 	);
 
 	const clearFilters = useCallback(() => {
-		setFilters({});
+		// No-op when nothing is active — avoids a new state identity that would
+		// trigger useList's page-reset effect (and a wasted render).
+		setFilters((prev) => (Object.keys(prev).length === 0 ? prev : {}));
 	}, []);
 
 	const clearAll = useCallback(() => {
-		setQueryState('');
-		setAppliedQuery('');
+		setQueryState((prev) => {
+			if (prev !== '') return '';
+			return prev;
+		});
+		setAppliedQuery((prev) => {
+			if (prev !== '') return '';
+			return prev;
+		});
 		setIsDebouncing(false);
-		setFilters({});
+		setFilters((prev) => (Object.keys(prev).length === 0 ? prev : {}));
 	}, []);
 
 	// Compute search fields: fallback to sample of items with string/number values across items
+	const searchFieldsProp = options?.searchFields;
 	const resolvedSearchFields = useMemo<Array<keyof T>>(() => {
-		if (searchFieldsRef.current) return searchFieldsRef.current;
+		if (searchFieldsProp) return searchFieldsProp;
 		if (items.length === 0) return [];
 
 		const fieldSet = new Set<keyof T>();
@@ -291,7 +344,7 @@ export function useFilter<T, K extends string = string>(
 			}
 		}
 		return Array.from(fieldSet);
-	}, [items]);
+	}, [searchFieldsProp, items]);
 
 	// Memoized filtered items (uses appliedQuery for filtering)
 	const filteredItems = useMemo(() => {
@@ -306,7 +359,7 @@ export function useFilter<T, K extends string = string>(
 		return items.filter((item) => {
 			// 1. Check global text query
 			if (normalizedQuery) {
-				const fieldsToSearch = searchFieldsRef.current ?? resolvedSearchFields;
+				const fieldsToSearch = resolvedSearchFields;
 				const matchesQuery = fieldsToSearch.some((field) => {
 					const val = item[field];
 					if (val === null || val === undefined) return false;
@@ -344,6 +397,7 @@ export function useFilter<T, K extends string = string>(
 		() => ({
 			filteredItems,
 			query,
+			appliedQuery,
 			setQuery,
 			filters,
 			setFilter,
@@ -352,6 +406,17 @@ export function useFilter<T, K extends string = string>(
 			clearAll,
 			isFiltering,
 		}),
-		[filteredItems, query, setQuery, filters, setFilter, clearFilter, clearFilters, clearAll, isFiltering],
+		[
+			filteredItems,
+			query,
+			appliedQuery,
+			setQuery,
+			filters,
+			setFilter,
+			clearFilter,
+			clearFilters,
+			clearAll,
+			isFiltering,
+		],
 	);
 }

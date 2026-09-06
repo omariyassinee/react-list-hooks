@@ -11,6 +11,8 @@ export interface UrlSyncOptions {
 	historyMode?: 'replace' | 'push';
 	/** Whether to keep other existing query parameters in the URL. Defaults to true. */
 	keepOtherParams?: boolean;
+	/** Internal: params owned by other pipeline stages. When keepOtherParams is false, these are still preserved so sibling stages don't wipe each other. Populated by useList; standalone hooks leave it empty. */
+	preserveParams?: string[];
 }
 
 export type PaginationRangeItem = number | 'ellipsis';
@@ -64,6 +66,8 @@ export interface UsePaginateReturn<T> extends Array<T> {
 	// extras
 	/** Update the page size. Preserves the user's approximate position. */
 	setPageSize: (size: number) => void;
+	/** Restore the initial page size (options.pageSize or the default of 10). Preserves the user's approximate position. */
+	resetPageSize: () => void;
 	/** Array of all page numbers, e.g. [1, 2, 3, 4, 5]. */
 	pageNumbers: number[];
 	/** Smart windowed pagination range with ellipses, e.g. [1, 'ellipsis', 4, 5, 6, 'ellipsis', 50]. */
@@ -89,6 +93,8 @@ export interface SortUrlSyncOptions {
 	historyMode?: 'replace' | 'push';
 	/** Whether to keep other existing query parameters in the URL. Defaults to true. */
 	keepOtherParams?: boolean;
+	/** Internal: params owned by other pipeline stages. When keepOtherParams is false, these are still preserved so sibling stages don't wipe each other. Populated by useList; standalone hooks leave it empty. */
+	preserveParams?: string[];
 }
 
 export interface UseSortOptions<T> {
@@ -113,6 +119,10 @@ export interface UseSortReturn<T> {
 	sortKey: keyof T | null;
 	/** The current direction of sorting. */
 	sortDirection: SortDirection | null;
+	/** The key the sorted output is currently ordered by (post-debounce). May lag sortKey while a debounce is pending. */
+	activeSortKey: keyof T | null;
+	/** The direction the sorted output is currently ordered by (post-debounce). May lag sortDirection while a debounce is pending. */
+	activeSortDirection: SortDirection | null;
 	/** Sort by a key, with an optional explicit direction. */
 	setSort: (key: keyof T, direction?: SortDirection) => void;
 	/** Toggle sorting on a key (cycles: asc -> desc -> clear/default). */
@@ -134,10 +144,14 @@ export interface FilterUrlSyncOptions<K extends string = string> {
 	queryParam?: string;
 	/** Custom URL search param name mapping for structured filter keys. */
 	paramMap?: Partial<Record<K, string>>;
+	/** Filter keys (unmapped ones included) that should be restored from the URL. A filter round-trips through the URL only if its key is declared in paramMap, initialFilters, or restoreKeys. */
+	restoreKeys?: Array<K>;
 	/** History navigation method: 'replace' (default) or 'push'. */
 	historyMode?: 'replace' | 'push';
 	/** Whether to keep other existing query parameters in the URL. Defaults to true. */
 	keepOtherParams?: boolean;
+	/** Internal: params owned by other pipeline stages. When keepOtherParams is false, these are still preserved so sibling stages don't wipe each other. Populated by useList; standalone hooks leave it empty. */
+	preserveParams?: string[];
 }
 
 export interface UseFilterOptions<T, K extends string = string> {
@@ -163,6 +177,8 @@ export interface UseFilterReturn<T, K extends string = string> {
 	filteredItems: T[];
 	/** The current global text search query. */
 	query: string;
+	/** The query the filtered output reflects (post-debounce). May lag query while a debounce is pending. */
+	appliedQuery: string;
 	/** Set the global text search query. */
 	setQuery: (query: string) => void;
 	/** The active structured field filter values. */
@@ -215,7 +231,7 @@ export interface UseListOptions<T, K extends string = string> {
 	filter?: Omit<UseFilterOptions<T, K>, 'urlSync'>;
 	/** Configuration for the sort stage. Omit to disable sorting. */
 	sort?: Omit<UseSortOptions<T>, 'urlSync'>;
-	/** Configuration for the paginate stage. Omit to disable pagination (returns all items). */
+	/** Configuration for the paginate stage. Omit to use default pagination (pageSize: 10). */
 	paginate?: Omit<UsePaginateOptions, 'urlSync'>;
 	/** Unified URL Search Params sync configuration across all pipeline stages. */
 	urlSync?: boolean | ListUrlSyncOptions<K | FilterKey<T>>;
@@ -279,6 +295,8 @@ export interface UseListReturn<T, K extends string = string> {
 	goToEnd: () => void;
 	/** Update the page size. Preserves the user's approximate position. */
 	setPageSize: (size: number) => void;
+	/** Restore the initial page size (options.pageSize or the default of 10). Preserves the user's approximate position. */
+	resetPageSize: () => void;
 	/** Array of all page numbers, e.g. [1, 2, 3, 4, 5]. */
 	pageNumbers: number[];
 	/** Smart windowed pagination range with ellipses, e.g. [1, 'ellipsis', 4, 5, 6, 'ellipsis', 50]. */

@@ -42,7 +42,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .DS_Store
 
 # Misc
-demo/
+packages/demo/
 .agents/
 .continue
 

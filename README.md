@@ -65,6 +65,25 @@ Requires React >= 18 as a peer dependency.
 
 ---
 
+## Development
+
+This repo is a Bun workspace monorepo:
+
+```
+packages/lib    — the publishable library (source, tests, build)
+packages/demo   — Vite playground, linked to the lib via workspace:*
+```
+
+```bash
+bun install          # install all workspaces
+bun run build        # build the library (packages/lib/dist)
+bun run test         # run the test suite
+bun run typecheck    # typecheck with tsgo
+bun run dev          # start the demo dev server
+```
+
+---
+
 ## Overview
 
 The package exports four hooks — three independent primitives that can be used alone, plus a master pipeline hook that composes them together (**Filter → Sort → Paginate**):
@@ -165,6 +184,7 @@ The return type `UsePaginateReturn<T>` extends `Array<T>` and exposes the follow
 | `goToStart` | `() => void` | Jump to page 1. |
 | `goToEnd` | `() => void` | Jump to the last page. |
 | `setPageSize` | `(size: number) => void` | Change the page size. Preserves the user's approximate scroll position by recalculating the current page. |
+| `resetPageSize` | `() => void` | Reset the page size to the initial value, keeping the first visible item on screen. |
 | `pageNumbers` | `number[]` | An array of all page numbers, e.g. `[1, 2, 3, 4, 5]`. |
 | `paginationRange` | `Array<number \| 'ellipsis'>` | Smart windowed page numbers with ellipsis markers (e.g. `[1, 'ellipsis', 4, 5, 6, 'ellipsis', 100]`). |
 | `isUrlSyncEnabled` | `boolean` | Whether URL synchronization is active. |
@@ -285,6 +305,8 @@ interface UseSortReturn<T> {
 | `sortedItems` | `T[]` | The array sorted by the current key and direction. Returns original array reference if no sort is active. |
 | `sortKey` | `keyof T \| null` | The key currently being sorted by. `null` if inactive. |
 | `sortDirection` | `'asc' \| 'desc' \| null` | The current sort direction. |
+| `activeSortKey` | `keyof T \| null` | The key whose sort has actually **applied** to the data. Matches `sortKey` except during a debounce window, where it still reflects the previous applied sort. |
+| `activeSortDirection` | `'asc' \| 'desc' \| null` | The direction actually applied to the data (lags behind `sortDirection` during debounce). |
 | `setSort` | `(key, direction?) => void` | Explicitly sort by a key. Direction defaults to `'asc'`. |
 | `toggleSort` | `(key) => void` | Cycle through sort states for a key: **asc → desc → clear → asc**. |
 | `clearSort` | `() => void` | Remove sorting and return to the original order. |
@@ -445,6 +467,7 @@ interface UseFilterReturn<T, K extends string = FilterKey<T>> {
 |----------|------|-------------|
 | `filteredItems` | `T[]` | The array containing only items that match the query and all active filters. Returns original array reference if no filters are active. |
 | `query` | `string` | The current global text search query. |
+| `appliedQuery` | `string` | The query actually **applied** to the data. Matches `query` except during a debounce window, where it still reflects the previous applied query. |
 | `setQuery` | `(query: string) => void` | Update the global search query. |
 | `filters` | `Partial<Record<K, unknown>>` | The currently active structured filter values. |
 | `setFilter` | `(key: K, value: unknown) => void` | Set a filter value for a field or custom filter key. Passing `undefined` clears that filter. |
@@ -484,11 +507,14 @@ const { filteredItems, query, filters } = useFilter(products, {
     enabled: true,
     queryParam: 'q',                      // default: 'q'
     paramMap: { category: 'cat' },        // Map internal filter key to custom URL query name
+    restoreKeys: ['category'],            // Unmapped keys to restore from URL (auto-set by useList)
     historyMode: 'replace',               // default: 'replace'
     keepOtherParams: true,                // default: true
   },
 });
 ```
+
+> **Note on `restoreKeys`:** filter keys that are *not* in `paramMap` are only restored from the URL if they are listed in `restoreKeys` (or declared in `initialFilters`). When using `useFilter` standalone with custom filter keys, add them to `restoreKeys` so a shared link round-trips. `useList` populates this automatically from its `initialFilters`.
 
 ### Debounce & React 18/19 `useTransition`
 
@@ -641,13 +667,14 @@ function DataTable({ data }) {
 | `goToPage` | `(page) => void` | Jump to a page. |
 | `goToStart` / `goToEnd` | `() => void` | Jump to first/last page. |
 | `setPageSize` | `(size) => void` | Change page size. |
+| `resetPageSize` | `() => void` | Reset page size to the initial value, keeping the first visible item on screen. |
 | `pageNumbers` | `number[]` | All page numbers. |
 | `paginationRange` | `Array<number \| 'ellipsis'>` | Windowed pagination range. |
 | **Pipeline metadata** | | |
 | `filteredCount` | `number` | Number of items after filtering. |
 | `isProcessing` | `boolean` | `true` while filter or sort debounce/transition is pending. |
 | **Unified actions** | | |
-| `resetAll` | `() => void` | Clear all filters, sorting, and reset to page 1. |
+| `resetAll` | `() => void` | Clear all filters, sorting, and reset to page 1 **and** the initial page size. |
 
 ### Options
 
@@ -657,7 +684,7 @@ interface UseListOptions<T, K extends string = string> {
   filter?: Omit<UseFilterOptions<T, K>, 'urlSync'>;
   /** Configuration for the sort stage. Omit to disable sorting. */
   sort?: Omit<UseSortOptions<T>, 'urlSync'>;
-  /** Configuration for the paginate stage. Omit to disable pagination config. */
+  /** Configuration for the paginate stage. Omit to use default pagination (pageSize: 10). */
   paginate?: Omit<UsePaginateOptions, 'urlSync'>;
   /** Unified URL sync configuration across all pipeline stages. */
   urlSync?: boolean | ListUrlSyncOptions<K>;

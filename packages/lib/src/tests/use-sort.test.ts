@@ -266,21 +266,30 @@ describe('useSort', () => {
 		expect(result.current.sortedItems.map((i) => i.id)).toEqual([2, 1]);
 	});
 
-	it('maintains getSortIndicator referential stability across sort state changes', () => {
-		const { result } = renderHook(() => useSort(mockUsers));
+	it('updates getSortIndicator reference and returned value when sort state changes', () => {
+		const { result, rerender } = renderHook(() => useSort(mockUsers));
 		const initialGetSortIndicator = result.current.getSortIndicator;
 
+		expect(result.current.getSortIndicator('name')).toBeNull();
+
+		// Referential stability across re-renders when sort state does not change
+		rerender();
+		expect(result.current.getSortIndicator).toBe(initialGetSortIndicator);
+
+		// Updates reference and value when sorting changes
 		act(() => result.current.setSort('name', 'asc'));
 		expect(result.current.getSortIndicator('name')).toBe('asc');
-		expect(result.current.getSortIndicator).toBe(initialGetSortIndicator);
+		expect(result.current.getSortIndicator).not.toBe(initialGetSortIndicator);
+		const ascGetSortIndicator = result.current.getSortIndicator;
 
 		act(() => result.current.toggleSort('name'));
 		expect(result.current.getSortIndicator('name')).toBe('desc');
-		expect(result.current.getSortIndicator).toBe(initialGetSortIndicator);
+		expect(result.current.getSortIndicator).not.toBe(ascGetSortIndicator);
+		const descGetSortIndicator = result.current.getSortIndicator;
 
 		act(() => result.current.clearSort());
 		expect(result.current.getSortIndicator('name')).toBeNull();
-		expect(result.current.getSortIndicator).toBe(initialGetSortIndicator);
+		expect(result.current.getSortIndicator).not.toBe(descGetSortIndicator);
 	});
 
 	// ─── urlSync ──────────────────────────────────────────────────────────────
@@ -398,4 +407,3 @@ describe('useSort', () => {
 		});
 	});
 });
-

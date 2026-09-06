@@ -417,13 +417,15 @@ describe('usePaginate', () => {
 			expect(result.current.getShareableUrl(99, -10)).toBe('/?page=4&pageSize=5');
 		});
 
-		it('always includes pageSize in getShareableUrl to ensure shareable links are self-contained', () => {
+		it('respects syncPageSize:false by omitting pageSize from getShareableUrl', () => {
 			window.history.replaceState({}, '', '/');
 			const { result } = renderHook(() =>
 				usePaginate(items(50), { pageSize: 10, urlSync: { enabled: true, syncPageSize: false } }),
 			);
-			expect(result.current.getShareableUrl(2)).toBe('/?page=2&pageSize=10');
-			expect(result.current.getShareableUrl(2, 25)).toBe('/?page=2&pageSize=25');
+			// syncPageSize:false means pageSize is not part of the shared URL contract —
+			// including it would make links inconsistent with the live URL.
+			expect(result.current.getShareableUrl(2)).toBe('/?page=2');
+			expect(result.current.getShareableUrl(2, 25)).toBe('/?page=2');
 		});
 
 		it('maintains callback reference stability across page navigations', () => {
@@ -486,8 +488,9 @@ describe('usePaginate', () => {
 
 		it('shows right ellipsis when near the beginning of large pages count', () => {
 			const { result } = renderHook(() => usePaginate(items(200), { pageSize: 10, initialPage: 1 }));
-			// 20 pages, page 1: [1, 2, 3, 4, 'ellipsis', 20]
-			expect(result.current.paginationRange).toEqual([1, 2, 3, 4, 'ellipsis', 20]);
+			// 20 pages, page 1: [1, 2, 3, 4, 5, 'ellipsis', 20] — page 1 keeps both
+			// siblings (2, 3) plus the filler page 5 that an ellipsis would hide.
+			expect(result.current.paginationRange).toEqual([1, 2, 3, 4, 5, 'ellipsis', 20]);
 		});
 
 		it('shows both left and right ellipses when in the middle of large pages count', () => {
@@ -498,8 +501,9 @@ describe('usePaginate', () => {
 
 		it('shows left ellipsis when near the end of large pages count', () => {
 			const { result } = renderHook(() => usePaginate(items(200), { pageSize: 10, initialPage: 20 }));
-			// 20 pages, page 20: [1, 'ellipsis', 17, 18, 19, 20]
-			expect(result.current.paginationRange).toEqual([1, 'ellipsis', 17, 18, 19, 20]);
+			// 20 pages, page 20: [1, 'ellipsis', 16, 17, 18, 19, 20] — page 20 keeps both
+			// siblings (18, 19) plus the filler page 16 that an ellipsis would hide.
+			expect(result.current.paginationRange).toEqual([1, 'ellipsis', 16, 17, 18, 19, 20]);
 		});
 
 		it('supports custom siblingCount and boundaryCount', () => {
