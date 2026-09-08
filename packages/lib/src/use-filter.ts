@@ -407,9 +407,15 @@ export function useFilter<T, K extends string = string>(
 
 	const isFiltering = isDebouncing || isPending;
 
-	return useMemo(
-		() => ({
-			filteredItems,
+	// Array-augmented return: the value IS the filtered items (spreads, maps,
+	// and JSON.stringify see only the data), with filter state/controls attached
+	// as non-enumerable properties — same pattern as usePaginate/useSort.
+	return useMemo(() => {
+		// Copy so we never attach props to the caller's array (filteredItems
+		// may be the original items reference when nothing is active).
+		const returnArr = filteredItems.slice();
+
+		const props: Record<string, unknown> = {
 			query,
 			appliedQuery,
 			setQuery,
@@ -419,18 +425,25 @@ export function useFilter<T, K extends string = string>(
 			clearFilters,
 			clearAll,
 			isFiltering,
-		}),
-		[
-			filteredItems,
-			query,
-			appliedQuery,
-			setQuery,
-			filters,
-			setFilter,
-			clearFilter,
-			clearFilters,
-			clearAll,
-			isFiltering,
-		],
-	);
+		};
+		for (const key in props) {
+			Object.defineProperty(returnArr, key, {
+				value: props[key],
+				writable: true,
+				configurable: true,
+			});
+		}
+		return returnArr as unknown as UseFilterReturn<T, K>;
+	}, [
+		filteredItems,
+		query,
+		appliedQuery,
+		setQuery,
+		filters,
+		setFilter,
+		clearFilter,
+		clearFilters,
+		clearAll,
+		isFiltering,
+	]);
 }

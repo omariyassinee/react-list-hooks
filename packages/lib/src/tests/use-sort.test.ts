@@ -17,9 +17,31 @@ const mockUsers: User[] = [
 ];
 
 describe('useSort', () => {
+	// ─── Return shape contract ────────────────────────────────────
+	describe('return shape contract', () => {
+		it('attaches metadata as non-enumerable props (Object.keys/JSON.stringify see only sorted items)', () => {
+			const { result } = renderHook(() => useSort(mockUsers, { initialKey: 'age', initialDirection: 'asc' }));
+			// Only the data items are enumerable — metadata stays hidden from
+			// Object.keys, spread, and JSON.stringify.
+			expect(Object.keys(result.current)).toEqual(['0', '1', '2']);
+			expect(JSON.stringify(result.current)).toBe(JSON.stringify([...result.current]));
+			// But the metadata is still directly accessible.
+			expect(result.current.sortKey).toBe('age');
+			expect(result.current.isSorting).toBe(false);
+		});
+
+		it('never returns the caller\u0027s items array reference (props are attached to a copy)', () => {
+			const { result } = renderHook(() => useSort(mockUsers));
+			expect(result.current).not.toBe(mockUsers);
+			expect([...result.current]).toEqual(mockUsers);
+			// The caller's array must stay unmodified (no props leaked onto it)
+			expect((mockUsers as unknown as Record<string, unknown>).sortKey).toBeUndefined();
+			expect((mockUsers as unknown as Record<string, unknown>).setSort).toBeUndefined();
+		});
+	});
 	it('returns items unmodified if no key or direction is specified', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
-		expect(result.current.sortedItems).toEqual(mockUsers);
+		expect([...result.current]).toEqual(mockUsers);
 		expect(result.current.sortKey).toBeNull();
 		expect(result.current.sortDirection).toBeNull();
 	});
@@ -28,12 +50,12 @@ describe('useSort', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
 
 		act(() => result.current.setSort('age', 'asc'));
-		expect(result.current.sortedItems.map((u) => u.age)).toEqual([25, 30, 35]);
+		expect(result.current.map((u) => u.age)).toEqual([25, 30, 35]);
 		expect(result.current.sortKey).toBe('age');
 		expect(result.current.sortDirection).toBe('asc');
 
 		act(() => result.current.setSort('age', 'desc'));
-		expect(result.current.sortedItems.map((u) => u.age)).toEqual([35, 30, 25]);
+		expect(result.current.map((u) => u.age)).toEqual([35, 30, 25]);
 		expect(result.current.sortDirection).toBe('desc');
 	});
 
@@ -42,21 +64,21 @@ describe('useSort', () => {
 
 		// Names: Alice, charlie, Bob -> sorted asc: Alice, Bob, charlie
 		act(() => result.current.setSort('name', 'asc'));
-		expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'Bob', 'charlie']);
+		expect(result.current.map((u) => u.name)).toEqual(['Alice', 'Bob', 'charlie']);
 	});
 
 	it('sorts dates correctly', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
 
 		act(() => result.current.setSort('joined', 'asc'));
-		expect(result.current.sortedItems.map((u) => u.id)).toEqual([3, 1, 2]); // Bob (2022), Alice (Jan 2023), Charlie (Mar 2023)
+		expect(result.current.map((u) => u.id)).toEqual([3, 1, 2]); // Bob (2022), Alice (Jan 2023), Charlie (Mar 2023)
 	});
 
 	it('sorts booleans correctly', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
 
 		act(() => result.current.setSort('isActive', 'asc')); // false (0) then true (1)
-		expect(result.current.sortedItems.map((u) => u.isActive)).toEqual([false, true, true]);
+		expect(result.current.map((u) => u.isActive)).toEqual([false, true, true]);
 	});
 
 	it('cycles sort state using toggleSort (asc -> desc -> null)', () => {
@@ -103,7 +125,7 @@ describe('useSort', () => {
 
 		// Alice (5), charlie (7), Bob (3) -> asc sorted by length: Bob (3), Alice (5), charlie (7)
 		act(() => result.current.setSort('name', 'asc'));
-		expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
+		expect(result.current.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
 	});
 
 	it('clears sort state with clearSort()', () => {
@@ -113,7 +135,7 @@ describe('useSort', () => {
 		act(() => result.current.clearSort());
 		expect(result.current.sortKey).toBeNull();
 		expect(result.current.sortDirection).toBeNull();
-		expect(result.current.sortedItems).toEqual(mockUsers);
+		expect([...result.current]).toEqual(mockUsers);
 	});
 
 	it('preserves referential equality of return object when state does not change', () => {
@@ -141,13 +163,11 @@ describe('useSort', () => {
 
 		act(() => result.current.setSort('score', 'asc'));
 		// 5 then 10 then nullish values at the bottom
-		expect(result.current.sortedItems.slice(0, 2).map((i) => i.score)).toEqual([5, 10]);
-		expect(result.current.sortedItems.slice(2).every((i) => i.score === null || i.score === undefined)).toBe(
-			true,
-		);
+		expect(result.current.slice(0, 2).map((i) => i.score)).toEqual([5, 10]);
+		expect(result.current.slice(2).every((i) => i.score === null || i.score === undefined)).toBe(true);
 	});
 
-	it('maintains sortedItems referential equality when inline comparators reference changes', () => {
+	it('maintains return referential equality when inline comparators reference changes', () => {
 		const { result, rerender } = renderHook(
 			({ comparators }) =>
 				useSort(mockUsers, {
@@ -162,14 +182,14 @@ describe('useSort', () => {
 			},
 		);
 
-		const firstSortedItems = result.current.sortedItems;
+		const firstSortedItems = result.current;
 
 		// Rerender with a NEW inline object reference for comparators
 		rerender({
 			comparators: { name: (a: User, b: User) => a.name.length - b.name.length },
 		});
 
-		const secondSortedItems = result.current.sortedItems;
+		const secondSortedItems = result.current;
 		expect(firstSortedItems).toBe(secondSortedItems);
 	});
 
@@ -189,10 +209,8 @@ describe('useSort', () => {
 
 		act(() => result.current.setSort('score', 'desc'));
 		// In desc: 10 then 5, then null and undefined at the bottom
-		expect(result.current.sortedItems.slice(0, 2).map((i) => i.score)).toEqual([10, 5]);
-		expect(result.current.sortedItems.slice(2).every((i) => i.score === null || i.score === undefined)).toBe(
-			true,
-		);
+		expect(result.current.slice(0, 2).map((i) => i.score)).toEqual([10, 5]);
+		expect(result.current.slice(2).every((i) => i.score === null || i.score === undefined)).toBe(true);
 	});
 
 	it('handles NaN numbers stably and places them at the bottom', () => {
@@ -205,14 +223,14 @@ describe('useSort', () => {
 		const { result } = renderHook(() => useSort(items));
 
 		act(() => result.current.setSort('val', 'asc'));
-		expect(result.current.sortedItems[0]?.val).toBe(5);
-		expect(result.current.sortedItems[1]?.val).toBe(20);
-		expect(Number.isNaN(result.current.sortedItems[2]?.val)).toBe(true);
+		expect(result.current[0]?.val).toBe(5);
+		expect(result.current[1]?.val).toBe(20);
+		expect(Number.isNaN(result.current[2]?.val)).toBe(true);
 
 		act(() => result.current.setSort('val', 'desc'));
-		expect(result.current.sortedItems[0]?.val).toBe(20);
-		expect(result.current.sortedItems[1]?.val).toBe(5);
-		expect(Number.isNaN(result.current.sortedItems[2]?.val)).toBe(true);
+		expect(result.current[0]?.val).toBe(20);
+		expect(result.current[1]?.val).toBe(5);
+		expect(Number.isNaN(result.current[2]?.val)).toBe(true);
 	});
 
 	it('sorts Symbol values without throwing TypeError', () => {
@@ -226,14 +244,14 @@ describe('useSort', () => {
 		const { result } = renderHook(() => useSort(items));
 
 		act(() => result.current.setSort('sym', 'asc'));
-		expect(result.current.sortedItems.map((i) => i.id)).toEqual([2, 1]);
+		expect(result.current.map((i) => i.id)).toEqual([2, 1]);
 	});
 
 	it('handles initialKey with initialDirection null consistently', () => {
 		const { result } = renderHook(() => useSort(mockUsers, { initialKey: 'name', initialDirection: null }));
 		expect(result.current.sortKey).toBeNull();
 		expect(result.current.sortDirection).toBeNull();
-		expect(result.current.sortedItems).toEqual(mockUsers);
+		expect([...result.current]).toEqual(mockUsers);
 	});
 
 	it('sorts BigInt and mixed BigInt/Number values without throwing TypeError', () => {
@@ -246,10 +264,10 @@ describe('useSort', () => {
 		const { result } = renderHook(() => useSort(items));
 
 		act(() => result.current.setSort('val', 'asc'));
-		expect(result.current.sortedItems.map((i) => i.id)).toEqual([2, 3, 1]);
+		expect(result.current.map((i) => i.id)).toEqual([2, 3, 1]);
 
 		act(() => result.current.setSort('val', 'desc'));
-		expect(result.current.sortedItems.map((i) => i.id)).toEqual([1, 3, 2]);
+		expect(result.current.map((i) => i.id)).toEqual([1, 3, 2]);
 	});
 
 	it('sorts function values deterministically by function name', () => {
@@ -263,7 +281,7 @@ describe('useSort', () => {
 		const { result } = renderHook(() => useSort(items));
 
 		act(() => result.current.setSort('fn', 'asc'));
-		expect(result.current.sortedItems.map((i) => i.id)).toEqual([2, 1]);
+		expect(result.current.map((i) => i.id)).toEqual([2, 1]);
 	});
 
 	it('updates getSortIndicator reference and returned value when sort state changes', () => {
@@ -304,7 +322,7 @@ describe('useSort', () => {
 
 			expect(result.current.sortKey).toBe('age');
 			expect(result.current.sortDirection).toBe('desc');
-			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
+			expect(result.current.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
 			window.history.replaceState({}, '', '/');
 		});
 
@@ -363,20 +381,20 @@ describe('useSort', () => {
 			);
 
 			expect(result.current.isSorting).toBe(false);
-			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'charlie', 'Bob']);
+			expect(result.current.map((u) => u.name)).toEqual(['Alice', 'charlie', 'Bob']);
 
 			// Toggle sort to name asc
 			act(() => result.current.setSort('name', 'asc'));
 			expect(result.current.sortKey).toBe('name');
 			expect(result.current.isSorting).toBe(true);
 			// Still old order before debounce timer expires
-			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'charlie', 'Bob']);
+			expect(result.current.map((u) => u.name)).toEqual(['Alice', 'charlie', 'Bob']);
 
 			// Wait for debounce timer
 			await new Promise((r) => setTimeout(r, 70));
 
 			expect(result.current.isSorting).toBe(false);
-			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'Bob', 'charlie']);
+			expect(result.current.map((u) => u.name)).toEqual(['Alice', 'Bob', 'charlie']);
 		});
 
 		it('immediately resets isSorting and sortState on clearSort', () => {
@@ -403,7 +421,7 @@ describe('useSort', () => {
 			expect(result.current.isSorting).toBe(false);
 			act(() => result.current.setSort('age', 'desc'));
 			expect(result.current.sortKey).toBe('age');
-			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
+			expect(result.current.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
 		});
 	});
 });

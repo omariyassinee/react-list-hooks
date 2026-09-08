@@ -112,9 +112,7 @@ export interface UseSortOptions<T> {
 	urlSync?: boolean | SortUrlSyncOptions;
 }
 
-export interface UseSortReturn<T> {
-	/** The sorted array of items. */
-	sortedItems: T[];
+export interface UseSortReturn<T> extends Array<T> {
 	/** The current key of T being sorted by. */
 	sortKey: keyof T | null;
 	/** The current direction of sorting. */
@@ -172,9 +170,7 @@ export interface UseFilterOptions<T, K extends string = string> {
 	urlSync?: boolean | FilterUrlSyncOptions<K | FilterKey<T>>;
 }
 
-export interface UseFilterReturn<T, K extends string = string> {
-	/** The filtered array of items matching query and filters. */
-	filteredItems: T[];
+export interface UseFilterReturn<T, K extends string = string> extends Array<T> {
 	/** The current global text search query. */
 	query: string;
 	/** The query the filtered output reflects (post-debounce). May lag query while a debounce is pending. */

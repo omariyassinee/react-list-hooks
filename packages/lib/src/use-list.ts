@@ -152,8 +152,9 @@ export function useList<T, K extends string = string>(
 		urlSync: filterUrlSync,
 	} as Parameters<typeof useFilter<T, K>>[1]);
 
+	// filterResult IS the filtered items (array-augmented return)
+	const filteredItems = filterResult;
 	const {
-		filteredItems,
 		appliedQuery,
 		query,
 		setQuery: rawSetQuery,
@@ -173,8 +174,9 @@ export function useList<T, K extends string = string>(
 		urlSync: sortUrlSync,
 	});
 
+	// sortResult IS the sorted items (array-augmented return)
+	const sortedItems = sortResult;
 	const {
-		sortedItems,
 		sortKey,
 		sortDirection,
 		activeSortKey,

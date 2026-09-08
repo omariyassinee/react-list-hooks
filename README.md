@@ -254,11 +254,12 @@ const page = usePaginate(products, {
 import { useSort } from '@omariyassine/react-list-hooks';
 
 function UserTable({ users }) {
-  const { sortedItems, sortKey, sortDirection, toggleSort, getSortIndicator, isSorting } = useSort(users, {
+  const sorted = useSort(users, {
     initialKey: 'name',
     initialDirection: 'asc',
     useTransition: true, // Non-blocking concurrent rendering
   });
+  const { sortKey, sortDirection, toggleSort, getSortIndicator, isSorting } = sorted;
 
   return (
     <table>
@@ -273,7 +274,7 @@ function UserTable({ users }) {
         </tr>
       </thead>
       <tbody>
-        {sortedItems.map((user) => (
+        {sorted.map((user) => (
           <tr key={user.id}>
             <td>{user.name}</td>
             <td>{user.age}</td>
@@ -285,13 +286,18 @@ function UserTable({ users }) {
 }
 ```
 
+The returned value is an **array-like object**: it spreads and maps like a normal array (the sorted items), but also carries properties for sort metadata and controls.
+
 ### Return Value
 
+The return type `UseSortReturn<T>` extends `Array<T>` and exposes the following properties:
+
 ```ts
-interface UseSortReturn<T> {
-  sortedItems: T[];
+interface UseSortReturn<T> extends Array<T> {
   sortKey: keyof T | null;
   sortDirection: SortDirection | null;
+  activeSortKey: keyof T | null;
+  activeSortDirection: SortDirection | null;
   setSort: (key: keyof T, direction?: SortDirection) => void;
   toggleSort: (key: keyof T) => void;
   clearSort: () => void;
@@ -302,7 +308,7 @@ interface UseSortReturn<T> {
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `sortedItems` | `T[]` | The array sorted by the current key and direction. Returns original array reference if no sort is active. |
+| *(array items)* | `T[]` | The value itself is the array sorted by the current key and direction. Iterate, spread, or map it directly. |
 | `sortKey` | `keyof T \| null` | The key currently being sorted by. `null` if inactive. |
 | `sortDirection` | `'asc' \| 'desc' \| null` | The current sort direction. |
 | `activeSortKey` | `keyof T \| null` | The key whose sort has actually **applied** to the data. Matches `sortKey` except during a debounce window, where it still reflects the previous applied sort. |
@@ -312,6 +318,8 @@ interface UseSortReturn<T> {
 | `clearSort` | `() => void` | Remove sorting and return to the original order. |
 | `getSortIndicator` | `(key) => SortDirection \| null` | Returns the current direction for a given key, or `null` if inactive. |
 | `isSorting` | `boolean` | `true` while a debounce timer or React 18/19 concurrent transition is in progress. |
+
+> **Note on Array Properties**: The extra sort properties are non-enumerable. Iterating with `for...in`, reading `Object.keys()`, or calling `JSON.stringify(sorted)` will cleanly serialize only the sorted items. The returned array is always a copy — your original `items` reference is never modified.
 
 ### Options
 
@@ -337,7 +345,7 @@ interface UseSortOptions<T> {
 `useSort` supports syncing active sort keys and directions to URL search parameters:
 
 ```tsx
-const { sortedItems } = useSort(users, {
+const sorted = useSort(users, {
   urlSync: {
     enabled: true,
     sortKeyParam: 'sortBy',    // default: 'sortBy'
@@ -376,7 +384,7 @@ This avoids repeated $N \log N$ object property lookups, making sorting over **1
 ### Custom Comparators
 
 ```tsx
-const { sortedItems } = useSort(employees, {
+const sorted = useSort(employees, {
   comparators: {
     fullName: (a, b) => {
       const aLast = a.name.split(' ').pop()!;
@@ -403,20 +411,13 @@ const { sortedItems } = useSort(employees, {
 import { useFilter } from '@omariyassine/react-list-hooks';
 
 function ProductList({ products }) {
-  const {
-    filteredItems,
-    query,
-    setQuery,
-    filters,
-    setFilter,
-    clearAll,
-    isFiltering,
-  } = useFilter(products, {
+  const filtered = useFilter(products, {
     searchFields: ['name', 'category'],
     debounceMs: 200,      // Debounce heavy text search
     useTransition: true,   // Non-blocking concurrent rendering
     urlSync: true,        // Sync query & filters with URL
   });
+  const { query, setQuery, filters, setFilter, clearAll, isFiltering } = filtered;
 
   return (
     <div>
@@ -439,7 +440,7 @@ function ProductList({ products }) {
 
       <button onClick={clearAll}>Clear All</button>
 
-      {filteredItems.map((product) => (
+      {filtered.map((product) => (
         <ProductCard key={product.id} product={product} />
       ))}
     </div>
@@ -447,16 +448,20 @@ function ProductList({ products }) {
 }
 ```
 
+The returned value is an **array-like object**: it spreads and maps like a normal array (the filtered items), but also carries properties for filter metadata and controls.
+
 ### Return Value
 
+The return type `UseFilterReturn<T, K>` extends `Array<T>` and exposes the following properties:
+
 ```ts
-interface UseFilterReturn<T, K extends string = FilterKey<T>> {
-  filteredItems: T[];
+interface UseFilterReturn<T, K extends string = string> extends Array<T> {
   query: string;
+  appliedQuery: string;
   setQuery: (query: string) => void;
-  filters: Partial<Record<K, unknown>>;
-  setFilter: (key: K, value: unknown) => void;
-  clearFilter: (key: K) => void;
+  filters: Partial<Record<K | FilterKey<T>, unknown>>;
+  setFilter: (key: K | FilterKey<T>, value: unknown) => void;
+  clearFilter: (key: K | FilterKey<T>) => void;
   clearFilters: () => void;
   clearAll: () => void;
   isFiltering: boolean;
@@ -465,7 +470,7 @@ interface UseFilterReturn<T, K extends string = FilterKey<T>> {
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `filteredItems` | `T[]` | The array containing only items that match the query and all active filters. Returns original array reference if no filters are active. |
+| *(array items)* | `T[]` | The value itself is the array containing only items that match the query and all active filters. Iterate, spread, or map it directly. |
 | `query` | `string` | The current global text search query. |
 | `appliedQuery` | `string` | The query actually **applied** to the data. Matches `query` except during a debounce window, where it still reflects the previous applied query. |
 | `setQuery` | `(query: string) => void` | Update the global search query. |
@@ -475,6 +480,8 @@ interface UseFilterReturn<T, K extends string = FilterKey<T>> {
 | `clearFilters` | `() => void` | Remove all field/structured filters (keeps the global text query). |
 | `clearAll` | `() => void` | Reset both the global query and all filters immediately. |
 | `isFiltering` | `boolean` | `true` while a debounce timer or React 18/19 transition is pending. |
+
+> **Note on Array Properties**: The extra filter properties are non-enumerable. Iterating with `for...in`, reading `Object.keys()`, or calling `JSON.stringify(filtered)` will cleanly serialize only the filtered items. The returned array is always a copy — your original `items` reference is never modified.
 
 ### Options
 
@@ -502,7 +509,7 @@ interface UseFilterOptions<T, K extends string = FilterKey<T>> {
 `useFilter` bi-directionally synchronizes search queries and structured filters to the URL:
 
 ```tsx
-const { filteredItems, query, filters } = useFilter(products, {
+const filtered = useFilter(products, {
   urlSync: {
     enabled: true,
     queryParam: 'q',                      // default: 'q'
@@ -526,7 +533,7 @@ When filtering large datasets (100k+ records):
 ### Custom Filter Predicates & Synthetic Keys
 
 ```tsx
-const { filteredItems, setFilter } = useFilter(products, {
+const filtered = useFilter(products, {
   customFilters: {
     // Synthetic key for numeric range
     priceRange: (item, range) => {
@@ -543,8 +550,8 @@ const { filteredItems, setFilter } = useFilter(products, {
   },
 });
 
-setFilter('priceRange', [10, 100]);
-setFilter('tags', 'react');
+filtered.setFilter('priceRange', [10, 100]);
+filtered.setFilter('tags', 'react');
 ```
 
 ---
@@ -781,22 +788,24 @@ import { usePaginate, useSort, useFilter } from '@omariyassine/react-list-hooks'
 
 function DataTable({ data }) {
   // 1. Filter first (reduces the dataset)
-  const { filteredItems, query, setQuery, filters, setFilter, clearAll, isFiltering } = useFilter(data, {
+  const filtered = useFilter(data, {
     searchFields: ['name', 'email'],
     debounceMs: 150,
     useTransition: true,
     urlSync: true,
   });
+  const { query, setQuery, filters, setFilter, clearAll, isFiltering } = filtered;
 
-  // 2. Sort the filtered results
-  const { sortedItems, toggleSort, getSortIndicator, isSorting } = useSort(filteredItems, {
+  // 2. Sort the filtered results (the filter return IS the array)
+  const sorted = useSort(filtered, {
     initialKey: 'name',
     useTransition: true,
     urlSync: true,
   });
+  const { toggleSort, getSortIndicator, isSorting } = sorted;
 
-  // 3. Paginate the sorted results
-  const page = usePaginate(sortedItems, {
+  // 3. Paginate the sorted results (the sort return IS the array)
+  const page = usePaginate(sorted, {
     pageSize: 10,
     siblingCount: 1,
     boundaryCount: 1,
@@ -871,8 +880,8 @@ interface User {
 
 // T is inferred as User
 const page = usePaginate(users, { pageSize: 10 });
-const { sortedItems } = useSort(users, { initialKey: 'name' });
-const { filteredItems } = useFilter(users, { searchFields: ['name', 'email'] });
+const sorted = useSort(users, { initialKey: 'name' });
+const filtered = useFilter(users, { searchFields: ['name', 'email'] });
 const list = useList(users, { filter: { searchFields: ['name'] }, paginate: { pageSize: 10 } });
 ```
 

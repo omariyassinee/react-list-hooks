@@ -150,8 +150,8 @@ describe('regression: filter type loss through URL (BUGS.md #5)', () => {
 		);
 
 		// The URL value '99' (string) must match the item's numeric price 99.
-		expect(result.current.filteredItems.length).toBe(1);
-		expect(result.current.filteredItems[0]?.name).toBe('Acoustic Pulse');
+		expect(result.current.length).toBe(1);
+		expect(result.current[0]?.name).toBe('Acoustic Pulse');
 	});
 
 	it('matches boolean items against "true"/"false" filter values', () => {
@@ -167,8 +167,8 @@ describe('regression: filter type loss through URL (BUGS.md #5)', () => {
 
 		const { result } = renderHook(() => useFilter<Flagged, string>(flagged, {}));
 		act(() => result.current.setFilter('active', 'true'));
-		expect(result.current.filteredItems.length).toBe(1);
-		expect(result.current.filteredItems[0]?.name).toBe('On');
+		expect(result.current.length).toBe(1);
+		expect(result.current[0]?.name).toBe('On');
 	});
 });
 
@@ -354,7 +354,7 @@ describe('regression: filter read path honors restoreKeys (BUGS.md #11)', () => 
 		);
 
 		expect(result.current.filters).toEqual({ category: 'Audio' });
-		expect(result.current.filteredItems.length).toBe(3);
+		expect(result.current.length).toBe(3);
 	});
 
 	it('auto-populates restoreKeys from initialFilters in useList', () => {
@@ -383,14 +383,14 @@ describe('regression: dynamic searchFields (BUGS.md #12)', () => {
 		);
 
 		act(() => result.current.setQuery('audio'));
-		expect(result.current.filteredItems.length).toBe(0);
+		expect(result.current.length).toBe(0);
 
 		rerender({ fields: ['name', 'category'] as Array<keyof Product> });
-		expect(result.current.filteredItems.length).toBe(3);
+		expect(result.current.length).toBe(3);
 
 		// Removing the prop reverts to auto-detection (name+category+price are strings)
 		rerender({ fields: undefined });
-		expect(result.current.filteredItems.length).toBe(3);
+		expect(result.current.length).toBe(3);
 	});
 });
 
