@@ -152,19 +152,16 @@ export function useList<T, K extends string = string>(
 		urlSync: filterUrlSync,
 	} as Parameters<typeof useFilter<T, K>>[1]);
 
-	// filterResult IS the filtered items (array-augmented return)
-	const filteredItems = filterResult;
+	// Namespaced filter stage result: filteredItems + state + methods
+	const filteredItems = filterResult.filteredItems;
+	const { appliedQuery, query, filters, isFiltering } = filterResult.state;
 	const {
-		appliedQuery,
-		query,
 		setQuery: rawSetQuery,
-		filters,
 		setFilter: rawSetFilter,
 		clearFilter: rawClearFilter,
 		clearFilters: rawClearFilters,
 		clearAll: rawClearAll,
-		isFiltering,
-	} = filterResult;
+	} = filterResult.methods;
 
 	// ─── Stage 2: Sort ─────────────────────────────────────────────────────
 	const sortInput = isFilterStageEnabled ? filteredItems : items;
@@ -174,19 +171,15 @@ export function useList<T, K extends string = string>(
 		urlSync: sortUrlSync,
 	});
 
-	// sortResult IS the sorted items (array-augmented return)
-	const sortedItems = sortResult;
+	// Namespaced sort stage result: sortedItems + state + methods
+	const sortedItems = sortResult.sortedItems;
+	const { sortKey, sortDirection, activeSortKey, activeSortDirection, isSorting } = sortResult.state;
 	const {
-		sortKey,
-		sortDirection,
-		activeSortKey,
-		activeSortDirection,
 		setSort: rawSetSort,
 		toggleSort: rawToggleSort,
 		clearSort: rawClearSort,
 		getSortIndicator,
-		isSorting,
-	} = sortResult;
+	} = sortResult.methods;
 
 	// ─── Stage 3: Paginate ─────────────────────────────────────────────────
 	// Consume the sort output whenever the sort hook is actually sorting —
@@ -213,7 +206,7 @@ export function useList<T, K extends string = string>(
 	// depending on these instead of `data` keeps the page-reset effect below
 	// from re-running on every page/items/pageSize identity change, and makes
 	// resetAll identity-stable.
-	const { goToStart, resetPageSize } = data;
+	const { goToStart, resetPageSize } = data.methods;
 
 	// ─── Automatic page-1 reset on filter/sort change ──────────────────────
 	// Track the *applied* (post-debounce) pipeline inputs so the page resets
@@ -301,21 +294,21 @@ export function useList<T, K extends string = string>(
 			getSortIndicator,
 
 			// Paginate access (proxied for convenience)
-			currentPage: data.currentPage,
-			totalPages: data.totalPages,
-			totalItems: data.totalItems,
-			pageSize: data.pageSize,
-			hasNext: data.hasNext,
-			hasPrev: data.hasPrev,
-			next: data.next,
-			prev: data.prev,
-			goToPage: data.goToPage,
-			goToStart: data.goToStart,
-			goToEnd: data.goToEnd,
-			setPageSize: data.setPageSize,
-			resetPageSize: data.resetPageSize,
-			pageNumbers: data.pageNumbers,
-			paginationRange: data.paginationRange,
+			currentPage: data.state.currentPage,
+			totalPages: data.state.totalPages,
+			totalItems: data.state.totalItems,
+			pageSize: data.state.pageSize,
+			hasNext: data.state.hasNext,
+			hasPrev: data.state.hasPrev,
+			next: data.methods.next,
+			prev: data.methods.prev,
+			goToPage: data.methods.goToPage,
+			goToStart: data.methods.goToStart,
+			goToEnd: data.methods.goToEnd,
+			setPageSize: data.methods.setPageSize,
+			resetPageSize: data.methods.resetPageSize,
+			pageNumbers: data.state.pageNumbers,
+			paginationRange: data.state.paginationRange,
 
 			// Pipeline metadata
 			filteredCount: filteredItems.length,

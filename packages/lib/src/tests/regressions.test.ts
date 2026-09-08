@@ -117,19 +117,19 @@ describe('regression: stale filter URL params (BUGS.md #4)', () => {
 	it('deletes the URL param when an unmapped filter is cleared', () => {
 		const { result } = renderHook(() => useFilter(products, { urlSync: true }));
 
-		act(() => result.current.setFilter('category', 'Audio'));
+		act(() => result.current.methods.setFilter('category', 'Audio'));
 		expect(currentSearch()).toContain('category=Audio');
 
-		act(() => result.current.clearFilter('category'));
+		act(() => result.current.methods.clearFilter('category'));
 		expect(currentSearch()).not.toContain('category=');
 	});
 
 	it('deletes the URL param on clearAll for unmapped keys', () => {
 		const { result } = renderHook(() => useFilter(products, { urlSync: true }));
 
-		act(() => result.current.setFilter('category', 'Audio'));
-		act(() => result.current.setQuery('Audio'));
-		act(() => result.current.clearAll());
+		act(() => result.current.methods.setFilter('category', 'Audio'));
+		act(() => result.current.methods.setQuery('Audio'));
+		act(() => result.current.methods.clearAll());
 
 		expect(currentSearch()).not.toContain('category=');
 		expect(currentSearch()).not.toContain('q=');
@@ -150,8 +150,8 @@ describe('regression: filter type loss through URL (BUGS.md #5)', () => {
 		);
 
 		// The URL value '99' (string) must match the item's numeric price 99.
-		expect(result.current.length).toBe(1);
-		expect(result.current[0]?.name).toBe('Acoustic Pulse');
+		expect(result.current.filteredItems.length).toBe(1);
+		expect(result.current.filteredItems[0]?.name).toBe('Acoustic Pulse');
 	});
 
 	it('matches boolean items against "true"/"false" filter values', () => {
@@ -166,9 +166,9 @@ describe('regression: filter type loss through URL (BUGS.md #5)', () => {
 		];
 
 		const { result } = renderHook(() => useFilter<Flagged, string>(flagged, {}));
-		act(() => result.current.setFilter('active', 'true'));
-		expect(result.current.length).toBe(1);
-		expect(result.current[0]?.name).toBe('On');
+		act(() => result.current.methods.setFilter('active', 'true'));
+		expect(result.current.filteredItems.length).toBe(1);
+		expect(result.current.filteredItems[0]?.name).toBe('On');
 	});
 });
 
@@ -204,7 +204,7 @@ describe('regression: omitted stages must not read URL params (BUGS.md #6)', () 
 		expect(result.current.sortKey).toBe(null);
 		expect(result.current.getSortIndicator('price')).toBe(null);
 		// Data is unsorted (original order preserved on the first page)
-		expect([...result.current.data].map((p) => p.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+		expect([...result.current.data.paginatedItems].map((p) => p.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 	});
 
 	it('ignores ?page= when the paginate stage is omitted', () => {
@@ -244,14 +244,14 @@ describe('regression: paginationRange MUI parity (BUGS.md #7)', () => {
 					boundaryCount: boundaries,
 				}),
 			);
-			expect(result.current.paginationRange).toEqual(expected);
+			expect(result.current.state.paginationRange).toEqual(expected);
 		});
 	}
 
 	it('always includes the current page in the range', () => {
 		for (let page = 1; page <= 20; page++) {
 			const { result } = renderHook(() => usePaginate(items(200), { pageSize: 10, initialPage: page }));
-			expect(result.current.paginationRange).toContain(page);
+			expect(result.current.state.paginationRange).toContain(page);
 		}
 	});
 });
@@ -268,7 +268,7 @@ describe('regression: syncPageSize:false consistency (BUGS.md #8)', () => {
 			}),
 		);
 
-		expect(result.current.pageSize).toBe(10);
+		expect(result.current.state.pageSize).toBe(10);
 	});
 
 	it('does not emit pageSize in getShareableUrl when syncPageSize is false', () => {
@@ -280,7 +280,7 @@ describe('regression: syncPageSize:false consistency (BUGS.md #8)', () => {
 			}),
 		);
 
-		expect(result.current.getShareableUrl(2)).toBe('/?page=2');
+		expect(result.current.methods.getShareableUrl(2)).toBe('/?page=2');
 	});
 });
 
@@ -290,18 +290,18 @@ describe('regression: sort URL uses applied state (BUGS.md #9)', () => {
 	it('does not write sortBy to the URL before the debounce elapses', () => {
 		const { result } = renderHook(() => useSort(products, { urlSync: true, debounceMs: 500 }));
 
-		act(() => result.current.setSort('price'));
+		act(() => result.current.methods.setSort('price'));
 
 		// Live state has flipped, but the URL must not claim it yet.
-		expect(result.current.sortKey).toBe('price');
+		expect(result.current.state.sortKey).toBe('price');
 		expect(currentSearch()).not.toContain('sortBy=');
-		expect(result.current.isSorting).toBe(true);
+		expect(result.current.state.isSorting).toBe(true);
 	});
 
 	it('writes sortBy to the URL after the debounce elapses', async () => {
 		const { result } = renderHook(() => useSort(products, { urlSync: true, debounceMs: 100 }));
 
-		act(() => result.current.setSort('price'));
+		act(() => result.current.methods.setSort('price'));
 		expect(currentSearch()).not.toContain('sortBy=');
 
 		// Flush the timer
@@ -353,8 +353,8 @@ describe('regression: filter read path honors restoreKeys (BUGS.md #11)', () => 
 			}),
 		);
 
-		expect(result.current.filters).toEqual({ category: 'Audio' });
-		expect(result.current.length).toBe(3);
+		expect(result.current.state.filters).toEqual({ category: 'Audio' });
+		expect(result.current.filteredItems.length).toBe(3);
 	});
 
 	it('auto-populates restoreKeys from initialFilters in useList', () => {
@@ -382,15 +382,15 @@ describe('regression: dynamic searchFields (BUGS.md #12)', () => {
 			{ initialProps: { fields: ['name'] as Array<keyof Product> | undefined } },
 		);
 
-		act(() => result.current.setQuery('audio'));
-		expect(result.current.length).toBe(0);
+		act(() => result.current.methods.setQuery('audio'));
+		expect(result.current.filteredItems.length).toBe(0);
 
 		rerender({ fields: ['name', 'category'] as Array<keyof Product> });
-		expect(result.current.length).toBe(3);
+		expect(result.current.filteredItems.length).toBe(3);
 
 		// Removing the prop reverts to auto-detection (name+category+price are strings)
 		rerender({ fields: undefined });
-		expect(result.current.length).toBe(3);
+		expect(result.current.filteredItems.length).toBe(3);
 	});
 });
 
@@ -465,11 +465,11 @@ describe('regression: resetAll restores pageSize (BUGS.md #15)', () => {
 	it('exposes resetPageSize on usePaginate directly', () => {
 		const { result } = renderHook(() => usePaginate(items(50), { pageSize: 5 }));
 
-		act(() => result.current.setPageSize(25));
-		expect(result.current.pageSize).toBe(25);
+		act(() => result.current.methods.setPageSize(25));
+		expect(result.current.state.pageSize).toBe(25);
 
-		act(() => result.current.resetPageSize());
-		expect(result.current.pageSize).toBe(5);
+		act(() => result.current.methods.resetPageSize());
+		expect(result.current.state.pageSize).toBe(5);
 	});
 });
 
@@ -484,7 +484,7 @@ describe('regression: strict URL number parsing (BUGS.md #17)', () => {
 
 		const { result } = renderHook(() => usePaginate(items(50), { urlSync: true }));
 
-		expect(result.current.currentPage).toBe(1);
+		expect(result.current.state.currentPage).toBe(1);
 	});
 
 	it('rejects ?pageSize=5xyz instead of parsing 5', () => {
@@ -492,7 +492,7 @@ describe('regression: strict URL number parsing (BUGS.md #17)', () => {
 
 		const { result } = renderHook(() => usePaginate(items(50), { urlSync: true }));
 
-		expect(result.current.pageSize).toBe(10);
+		expect(result.current.state.pageSize).toBe(10);
 	});
 
 	it('still accepts valid integers', () => {
@@ -500,8 +500,8 @@ describe('regression: strict URL number parsing (BUGS.md #17)', () => {
 
 		const { result } = renderHook(() => usePaginate(items(50), { urlSync: true }));
 
-		expect(result.current.currentPage).toBe(3);
-		expect(result.current.pageSize).toBe(5);
+		expect(result.current.state.currentPage).toBe(3);
+		expect(result.current.state.pageSize).toBe(5);
 	});
 });
 

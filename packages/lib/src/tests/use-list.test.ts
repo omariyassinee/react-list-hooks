@@ -44,8 +44,11 @@ describe('useList', () => {
 			expect(result.current.filteredCount).toBe(3);
 			// Sort by price asc: Echo Buds (79), Acoustic Pulse (99), Bass Blaster (199)
 			// Paginate page 1, size 2: Echo Buds, Acoustic Pulse
-			expect(result.current.data.length).toBe(2);
-			expect([...result.current.data].map((p) => p.name)).toEqual(['Echo Buds', 'Acoustic Pulse']);
+			expect(result.current.data.paginatedItems.length).toBe(2);
+			expect([...result.current.data.paginatedItems].map((p) => p.name)).toEqual([
+				'Echo Buds',
+				'Acoustic Pulse',
+			]);
 			expect(result.current.totalPages).toBe(2);
 			expect(result.current.currentPage).toBe(1);
 		});
@@ -54,7 +57,7 @@ describe('useList', () => {
 			const { result } = renderHook(() => useList(mockProducts));
 
 			// No filter, no sort, default paginate (pageSize 10)
-			expect(result.current.data.length).toBe(10);
+			expect(result.current.data.paginatedItems.length).toBe(10);
 			expect(result.current.totalItems).toBe(12);
 			expect(result.current.totalPages).toBe(2);
 			expect(result.current.filteredCount).toBe(12);
@@ -81,7 +84,11 @@ describe('useList', () => {
 			);
 
 			// Sort by price desc: Quantum Screen (899), VR Deck (599), NeuroPad (450), ...
-			expect([...result.current.data].map((p) => p.name)).toEqual(['Quantum Screen', 'VR Deck', 'NeuroPad']);
+			expect([...result.current.data.paginatedItems].map((p) => p.name)).toEqual([
+				'Quantum Screen',
+				'VR Deck',
+				'NeuroPad',
+			]);
 		});
 	});
 
@@ -453,7 +460,7 @@ describe('useList', () => {
 				}),
 			);
 
-			expect(result.current.data.length).toBe(0);
+			expect(result.current.data.paginatedItems.length).toBe(0);
 			expect(result.current.totalPages).toBe(1);
 			expect(result.current.currentPage).toBe(1);
 			expect(result.current.filteredCount).toBe(0);
@@ -469,9 +476,9 @@ describe('useList', () => {
 				}),
 			);
 
-			const names = result.current.data.map((p) => p.name);
+			const names = result.current.data.paginatedItems.map((p) => p.name);
 			expect(names.length).toBe(3);
-			expect(Array.isArray(result.current.data)).toBe(true);
+			expect(Array.isArray(result.current.data.paginatedItems)).toBe(true);
 		});
 
 		it('proxied paginate properties match data properties', () => {
@@ -483,20 +490,20 @@ describe('useList', () => {
 				}),
 			);
 
-			expect(result.current.currentPage).toBe(result.current.data.currentPage);
-			expect(result.current.totalPages).toBe(result.current.data.totalPages);
-			expect(result.current.totalItems).toBe(result.current.data.totalItems);
-			expect(result.current.pageSize).toBe(result.current.data.pageSize);
-			expect(result.current.hasNext).toBe(result.current.data.hasNext);
-			expect(result.current.hasPrev).toBe(result.current.data.hasPrev);
-			expect(result.current.next).toBe(result.current.data.next);
-			expect(result.current.prev).toBe(result.current.data.prev);
-			expect(result.current.goToPage).toBe(result.current.data.goToPage);
-			expect(result.current.goToStart).toBe(result.current.data.goToStart);
-			expect(result.current.goToEnd).toBe(result.current.data.goToEnd);
-			expect(result.current.setPageSize).toBe(result.current.data.setPageSize);
-			expect(result.current.pageNumbers).toBe(result.current.data.pageNumbers);
-			expect(result.current.paginationRange).toBe(result.current.data.paginationRange);
+			expect(result.current.currentPage).toBe(result.current.data.state.currentPage);
+			expect(result.current.totalPages).toBe(result.current.data.state.totalPages);
+			expect(result.current.totalItems).toBe(result.current.data.state.totalItems);
+			expect(result.current.pageSize).toBe(result.current.data.state.pageSize);
+			expect(result.current.hasNext).toBe(result.current.data.state.hasNext);
+			expect(result.current.hasPrev).toBe(result.current.data.state.hasPrev);
+			expect(result.current.next).toBe(result.current.data.methods.next);
+			expect(result.current.prev).toBe(result.current.data.methods.prev);
+			expect(result.current.goToPage).toBe(result.current.data.methods.goToPage);
+			expect(result.current.goToStart).toBe(result.current.data.methods.goToStart);
+			expect(result.current.goToEnd).toBe(result.current.data.methods.goToEnd);
+			expect(result.current.setPageSize).toBe(result.current.data.methods.setPageSize);
+			expect(result.current.pageNumbers).toBe(result.current.data.state.pageNumbers);
+			expect(result.current.paginationRange).toBe(result.current.data.state.paginationRange);
 		});
 
 		it('getSortIndicator works correctly through the pipeline', () => {

@@ -356,52 +356,51 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 	// --- Return: single useMemo with inline slice and status flags ---
 
 	return useMemo(() => {
-		// Slice once and attach props directly — no second copy ([...currentItems]).
-		const returnArr = items.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
+		// Slice once — the page window is the only data copy.
+		const paginatedItems = items.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
 
 		const hasNext = effectivePage < totalPages;
 		const hasPrev = effectivePage > 1;
 		const isFirstPage = effectivePage === 1;
 		const isLastPage = effectivePage === totalPages;
 
-		// Props stay non-enumerable (defineProperty without `enumerable`),
-		// so Object.keys()/JSON.stringify() see only the page items —
-		// matching the historical shape consumers may rely on.
-		const props: Record<string, unknown> = {
-			currentPage: effectivePage,
-			totalPages,
-			totalItems,
-			pageSize,
-			hasNext,
-			hasPrev,
-			isFirstPage,
-			isLastPage,
-			next,
-			prev,
-			goToPage,
-			goToStart,
-			goToEnd,
-			setPageSize,
-			resetPageSize,
-			pageNumbers,
-			paginationRange,
-			isUrlSyncEnabled,
-			getShareableUrl,
-		};
-		for (const key in props) {
-			Object.defineProperty(returnArr, key, {
-				value: props[key],
-				writable: true,
-				configurable: true,
-			});
-		}
-		return returnArr as unknown as UsePaginateReturn<T>;
+		// Namespaced return: the page data plus `state` (stateful properties)
+		// and `methods` (controls) — the shared return contract for all sub hooks.
+		return {
+			paginatedItems,
+			state: {
+				currentPage: effectivePage,
+				totalPages,
+				totalItems,
+				pageSize,
+				hasNext,
+				hasPrev,
+				isFirstPage,
+				isLastPage,
+				pageNumbers,
+				paginationRange,
+				isUrlSyncEnabled,
+			},
+			methods: {
+				next,
+				prev,
+				goToPage,
+				goToStart,
+				goToEnd,
+				setPageSize,
+				resetPageSize,
+				getShareableUrl,
+			},
+		} satisfies UsePaginateReturn<T>;
 	}, [
 		items,
 		effectivePage,
 		totalPages,
 		totalItems,
 		pageSize,
+		pageNumbers,
+		paginationRange,
+		isUrlSyncEnabled,
 		next,
 		prev,
 		goToPage,
@@ -409,9 +408,6 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 		goToEnd,
 		setPageSize,
 		resetPageSize,
-		pageNumbers,
-		paginationRange,
-		isUrlSyncEnabled,
 		getShareableUrl,
 	]);
 }

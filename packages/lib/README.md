@@ -131,42 +131,59 @@ function ProductList({ products }) {
     siblingCount: 1,
     boundaryCount: 1,
   });
+  const { paginatedItems, state, methods } = page;
 
   return (
     <div>
-      {page.map((product) => (
+      {paginatedItems.map((product) => (
         <ProductCard key={product.id} product={product} />
       ))}
 
       <div className="controls">
-        <button onClick={page.prev} disabled={!page.hasPrev}>Previous</button>
+        <button onClick={methods.prev} disabled={!state.hasPrev}>Previous</button>
 
-        {page.paginationRange.map((item, index) =>
+        {state.paginationRange.map((item, index) =>
           item === 'ellipsis' ? (
             <span key={`ellipsis-${index}`}>...</span>
           ) : (
             <button
               key={item}
-              className={page.currentPage === item ? 'active' : ''}
-              onClick={() => page.goToPage(item)}
+              className={state.currentPage === item ? 'active' : ''}
+              onClick={() => methods.goToPage(item)}
             >
               {item}
             </button>
           )
         )}
 
-        <button onClick={page.next} disabled={!page.hasNext}>Next</button>
+        <button onClick={methods.next} disabled={!state.hasNext}>Next</button>
       </div>
     </div>
   );
 }
 ```
 
-The returned value is an **array-like object**: it spreads and maps like a normal array (the current page's items), but also carries properties for pagination metadata and controls.
+The returned value is a **plain object** with exactly three keys: `paginatedItems` (the current page's items), `state` (pagination metadata), and `methods` (navigation controls).
 
 ### Return Value
 
-The return type `UsePaginateReturn<T>` extends `Array<T>` and exposes the following properties:
+The return type `UsePaginateReturn<T>` is a plain object:
+
+```ts
+interface UsePaginateReturn<T> {
+  paginatedItems: T[];
+  state: UsePaginateState;
+  methods: UsePaginateMethods;
+}
+```
+
+#### `paginatedItems`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `paginatedItems` | `T[]` | The items of the current page. Iterate, spread, or map it directly. |
+
+#### `state`
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -178,6 +195,14 @@ The return type `UsePaginateReturn<T>` extends `Array<T>` and exposes the follow
 | `hasPrev` | `boolean` | Whether a previous page exists. |
 | `isFirstPage` | `boolean` | Whether the current page is the first. |
 | `isLastPage` | `boolean` | Whether the current page is the last. |
+| `pageNumbers` | `number[]` | An array of all page numbers, e.g. `[1, 2, 3, 4, 5]`. |
+| `paginationRange` | `Array<number \| 'ellipsis'>` | Smart windowed page numbers with ellipsis markers (e.g. `[1, 'ellipsis', 4, 5, 6, 'ellipsis', 100]`). |
+| `isUrlSyncEnabled` | `boolean` | Whether URL synchronization is active. |
+
+#### `methods`
+
+| Property | Type | Description |
+|----------|------|-------------|
 | `next` | `() => void` | Go to the next page (no-op if on last). |
 | `prev` | `() => void` | Go to the previous page (no-op if on first). |
 | `goToPage` | `(page: number) => void` | Jump to a specific page. Clamped to `[1, totalPages]`. |
@@ -185,12 +210,7 @@ The return type `UsePaginateReturn<T>` extends `Array<T>` and exposes the follow
 | `goToEnd` | `() => void` | Jump to the last page. |
 | `setPageSize` | `(size: number) => void` | Change the page size. Preserves the user's approximate scroll position by recalculating the current page. |
 | `resetPageSize` | `() => void` | Reset the page size to the initial value, keeping the first visible item on screen. |
-| `pageNumbers` | `number[]` | An array of all page numbers, e.g. `[1, 2, 3, 4, 5]`. |
-| `paginationRange` | `Array<number \| 'ellipsis'>` | Smart windowed page numbers with ellipsis markers (e.g. `[1, 'ellipsis', 4, 5, 6, 'ellipsis', 100]`). |
-| `isUrlSyncEnabled` | `boolean` | Whether URL synchronization is active. |
 | `getShareableUrl` | `(targetPage?, targetPageSize?, baseUrl?) => string` | Generate a URL string with the pagination params applied. |
-
-> **Note on Array Properties**: The extra pagination properties are non-enumerable. Iterating with `for...in`, reading `Object.keys()`, or calling `JSON.stringify(page)` will cleanly serialize only the items of the current page.
 
 ### Options
 
@@ -221,7 +241,7 @@ const page = usePaginate(items, {
 });
 
 // If currentPage is 5 on 100 total pages:
-// page.paginationRange -> [1, 'ellipsis', 4, 5, 6, 'ellipsis', 100]
+// page.state.paginationRange -> [1, 'ellipsis', 4, 5, 6, 'ellipsis', 100]
 ```
 
 ### URL Synchronization
@@ -259,7 +279,8 @@ function UserTable({ users }) {
     initialDirection: 'asc',
     useTransition: true, // Non-blocking concurrent rendering
   });
-  const { sortKey, sortDirection, toggleSort, getSortIndicator, isSorting } = sorted;
+  const { sortedItems, state, methods } = sorted;
+  const { toggleSort, getSortIndicator } = methods;
 
   return (
     <table>
@@ -274,7 +295,7 @@ function UserTable({ users }) {
         </tr>
       </thead>
       <tbody>
-        {sorted.map((user) => (
+        {sortedItems.map((user) => (
           <tr key={user.id}>
             <td>{user.name}</td>
             <td>{user.age}</td>
@@ -286,40 +307,46 @@ function UserTable({ users }) {
 }
 ```
 
-The returned value is an **array-like object**: it spreads and maps like a normal array (the sorted items), but also carries properties for sort metadata and controls.
+The returned value is a **plain object** with exactly three keys: `sortedItems` (the sorted array), `state` (sort metadata), and `methods` (sort controls).
 
 ### Return Value
 
-The return type `UseSortReturn<T>` extends `Array<T>` and exposes the following properties:
+The return type `UseSortReturn<T>` is a plain object:
 
 ```ts
-interface UseSortReturn<T> extends Array<T> {
-  sortKey: keyof T | null;
-  sortDirection: SortDirection | null;
-  activeSortKey: keyof T | null;
-  activeSortDirection: SortDirection | null;
-  setSort: (key: keyof T, direction?: SortDirection) => void;
-  toggleSort: (key: keyof T) => void;
-  clearSort: () => void;
-  getSortIndicator: (key: keyof T) => SortDirection | null;
-  isSorting: boolean;
+interface UseSortReturn<T> {
+  sortedItems: T[];
+  state: UseSortState<T>;
+  methods: UseSortMethods<T>;
 }
 ```
 
+#### `sortedItems`
+
 | Property | Type | Description |
 |----------|------|-------------|
-| *(array items)* | `T[]` | The value itself is the array sorted by the current key and direction. Iterate, spread, or map it directly. |
+| `sortedItems` | `T[]` | The array sorted by the current key and direction. Iterate, spread, or map it directly. |
+
+#### `state`
+
+| Property | Type | Description |
+|----------|------|-------------|
 | `sortKey` | `keyof T \| null` | The key currently being sorted by. `null` if inactive. |
 | `sortDirection` | `'asc' \| 'desc' \| null` | The current sort direction. |
 | `activeSortKey` | `keyof T \| null` | The key whose sort has actually **applied** to the data. Matches `sortKey` except during a debounce window, where it still reflects the previous applied sort. |
 | `activeSortDirection` | `'asc' \| 'desc' \| null` | The direction actually applied to the data (lags behind `sortDirection` during debounce). |
+| `isSorting` | `boolean` | `true` while a debounce timer or React 18/19 concurrent transition is in progress. |
+
+#### `methods`
+
+| Property | Type | Description |
+|----------|------|-------------|
 | `setSort` | `(key, direction?) => void` | Explicitly sort by a key. Direction defaults to `'asc'`. |
 | `toggleSort` | `(key) => void` | Cycle through sort states for a key: **asc → desc → clear → asc**. |
 | `clearSort` | `() => void` | Remove sorting and return to the original order. |
 | `getSortIndicator` | `(key) => SortDirection \| null` | Returns the current direction for a given key, or `null` if inactive. |
-| `isSorting` | `boolean` | `true` while a debounce timer or React 18/19 concurrent transition is in progress. |
 
-> **Note on Array Properties**: The extra sort properties are non-enumerable. Iterating with `for...in`, reading `Object.keys()`, or calling `JSON.stringify(sorted)` will cleanly serialize only the sorted items. The returned array is always a copy — your original `items` reference is never modified.
+> **Note**: When sorting is inactive, `sortedItems` is the original `items` array reference — your data is never copied or modified.
 
 ### Options
 
@@ -417,7 +444,9 @@ function ProductList({ products }) {
     useTransition: true,   // Non-blocking concurrent rendering
     urlSync: true,        // Sync query & filters with URL
   });
-  const { query, setQuery, filters, setFilter, clearAll, isFiltering } = filtered;
+  const { filteredItems, state, methods } = filtered;
+  const { query, filters, isFiltering } = state;
+  const { setQuery, setFilter, clearAll } = methods;
 
   return (
     <div>
@@ -440,7 +469,7 @@ function ProductList({ products }) {
 
       <button onClick={clearAll}>Clear All</button>
 
-      {filtered.map((product) => (
+      {filteredItems.map((product) => (
         <ProductCard key={product.id} product={product} />
       ))}
     </div>
@@ -448,40 +477,46 @@ function ProductList({ products }) {
 }
 ```
 
-The returned value is an **array-like object**: it spreads and maps like a normal array (the filtered items), but also carries properties for filter metadata and controls.
+The returned value is a **plain object** with exactly three keys: `filteredItems` (the filtered array), `state` (filter metadata), and `methods` (filter controls).
 
 ### Return Value
 
-The return type `UseFilterReturn<T, K>` extends `Array<T>` and exposes the following properties:
+The return type `UseFilterReturn<T, K>` is a plain object:
 
 ```ts
-interface UseFilterReturn<T, K extends string = string> extends Array<T> {
-  query: string;
-  appliedQuery: string;
-  setQuery: (query: string) => void;
-  filters: Partial<Record<K | FilterKey<T>, unknown>>;
-  setFilter: (key: K | FilterKey<T>, value: unknown) => void;
-  clearFilter: (key: K | FilterKey<T>) => void;
-  clearFilters: () => void;
-  clearAll: () => void;
-  isFiltering: boolean;
+interface UseFilterReturn<T, K extends string = string> {
+  filteredItems: T[];
+  state: UseFilterState<T, K>;
+  methods: UseFilterMethods<T, K>;
 }
 ```
 
+#### `filteredItems`
+
 | Property | Type | Description |
 |----------|------|-------------|
-| *(array items)* | `T[]` | The value itself is the array containing only items that match the query and all active filters. Iterate, spread, or map it directly. |
+| `filteredItems` | `T[]` | The array containing only items that match the query and all active filters. Iterate, spread, or map it directly. |
+
+#### `state`
+
+| Property | Type | Description |
+|----------|------|-------------|
 | `query` | `string` | The current global text search query. |
 | `appliedQuery` | `string` | The query actually **applied** to the data. Matches `query` except during a debounce window, where it still reflects the previous applied query. |
-| `setQuery` | `(query: string) => void` | Update the global search query. |
 | `filters` | `Partial<Record<K, unknown>>` | The currently active structured filter values. |
+| `isFiltering` | `boolean` | `true` while a debounce timer or React 18/19 transition is pending. |
+
+#### `methods`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `setQuery` | `(query: string) => void` | Update the global search query. |
 | `setFilter` | `(key: K, value: unknown) => void` | Set a filter value for a field or custom filter key. Passing `undefined` clears that filter. |
 | `clearFilter` | `(key: K) => void` | Remove the filter for a specific key. |
 | `clearFilters` | `() => void` | Remove all field/structured filters (keeps the global text query). |
 | `clearAll` | `() => void` | Reset both the global query and all filters immediately. |
-| `isFiltering` | `boolean` | `true` while a debounce timer or React 18/19 transition is pending. |
 
-> **Note on Array Properties**: The extra filter properties are non-enumerable. Iterating with `for...in`, reading `Object.keys()`, or calling `JSON.stringify(filtered)` will cleanly serialize only the filtered items. The returned array is always a copy — your original `items` reference is never modified.
+> **Note**: When no query or filters are active, `filteredItems` is the original `items` array reference — your data is never copied or modified.
 
 ### Options
 
@@ -550,8 +585,8 @@ const filtered = useFilter(products, {
   },
 });
 
-filtered.setFilter('priceRange', [10, 100]);
-filtered.setFilter('tags', 'react');
+filtered.methods.setFilter('priceRange', [10, 100]);
+filtered.methods.setFilter('tags', 'react');
 ```
 
 ---
@@ -592,6 +627,9 @@ function DataTable({ data }) {
     },
     urlSync: true,
   });
+  const { paginatedItems } = page;
+  const { currentPage, hasPrev, hasNext, paginationRange } = page.state;
+  const { prev, next, goToPage } = page.methods;
 
   return (
     <div>
@@ -611,7 +649,7 @@ function DataTable({ data }) {
           </tr>
         </thead>
         <tbody>
-          {page.map((user) => (
+          {paginatedItems.map((user) => (
             <tr key={user.id}>
               <td>{user.name}</td>
               <td>{user.email}</td>
@@ -621,21 +659,21 @@ function DataTable({ data }) {
       </table>
 
       <div className="pagination">
-        <button onClick={page.prev} disabled={!page.hasPrev}>Previous</button>
-        {page.paginationRange.map((item, idx) =>
+        <button onClick={prev} disabled={!hasPrev}>Previous</button>
+        {paginationRange.map((item, idx) =>
           item === 'ellipsis' ? (
             <span key={`ellipsis-${idx}`}>...</span>
           ) : (
             <button
               key={item}
-              className={page.currentPage === item ? 'active' : ''}
-              onClick={() => page.goToPage(item)}
+              className={currentPage === item ? 'active' : ''}
+              onClick={() => goToPage(item)}
             >
               {item}
             </button>
           )
         )}
-        <button onClick={page.next} disabled={!page.hasNext}>Next</button>
+        <button onClick={next} disabled={!hasNext}>Next</button>
       </div>
     </div>
   );
@@ -649,7 +687,7 @@ function DataTable({ data }) {
 | Property | Type | Description |
 |----------|------|-------------|
 | **Pipeline output** | | |
-| `data` | `UsePaginateReturn<T>` | The current page slice (array-augmented, mappable). |
+| `data` | `UsePaginateReturn<T>` | The paginate stage result: `{ paginatedItems, state, methods }`. |
 | **Filter access** | | |
 | `query` | `string` | Current global text search query. |
 | `setQuery` | `(query: string) => void` | Update the search query. Resets to page 1. |
@@ -794,23 +832,28 @@ function DataTable({ data }) {
     useTransition: true,
     urlSync: true,
   });
-  const { query, setQuery, filters, setFilter, clearAll, isFiltering } = filtered;
+  const { query, isFiltering } = filtered.state;
+  const { setQuery, setFilter } = filtered.methods;
 
-  // 2. Sort the filtered results (the filter return IS the array)
-  const sorted = useSort(filtered, {
+  // 2. Sort the filtered results
+  const sorted = useSort(filtered.filteredItems, {
     initialKey: 'name',
     useTransition: true,
     urlSync: true,
   });
-  const { toggleSort, getSortIndicator, isSorting } = sorted;
+  const { isSorting } = sorted.state;
+  const { toggleSort, getSortIndicator } = sorted.methods;
 
-  // 3. Paginate the sorted results (the sort return IS the array)
-  const page = usePaginate(sorted, {
+  // 3. Paginate the sorted results
+  const page = usePaginate(sorted.sortedItems, {
     pageSize: 10,
     siblingCount: 1,
     boundaryCount: 1,
     urlSync: true,
   });
+  const { paginatedItems } = page;
+  const { currentPage, hasPrev, hasNext, paginationRange } = page.state;
+  const { prev, next, goToPage } = page.methods;
 
   return (
     <div>
@@ -829,7 +872,7 @@ function DataTable({ data }) {
           </tr>
         </thead>
         <tbody>
-          {page.map((user) => (
+          {paginatedItems.map((user) => (
             <tr key={user.id}>
               <td>{user.name}</td>
               <td>{user.email}</td>
@@ -840,21 +883,21 @@ function DataTable({ data }) {
 
       {/* Windowed pagination controls with ellipses */}
       <div className="pagination">
-        <button onClick={page.prev} disabled={!page.hasPrev}>Previous</button>
-        {page.paginationRange.map((item, idx) =>
+        <button onClick={prev} disabled={!hasPrev}>Previous</button>
+        {paginationRange.map((item, idx) =>
           item === 'ellipsis' ? (
             <span key={`ellipsis-${idx}`}>...</span>
           ) : (
             <button
               key={item}
-              className={page.currentPage === item ? 'active' : ''}
-              onClick={() => page.goToPage(item)}
+              className={currentPage === item ? 'active' : ''}
+              onClick={() => goToPage(item)}
             >
               {item}
             </button>
           )
         )}
-        <button onClick={page.next} disabled={!page.hasNext}>Next</button>
+        <button onClick={next} disabled={!hasNext}>Next</button>
       </div>
     </div>
   );
@@ -891,14 +934,20 @@ All public types are exported from the package entry point:
 import type {
   UsePaginateOptions,
   UsePaginateReturn,
+  UsePaginateState,
+  UsePaginateMethods,
   PaginationRangeItem,
   UrlSyncOptions,
   UseSortOptions,
   UseSortReturn,
+  UseSortState,
+  UseSortMethods,
   SortDirection,
   SortUrlSyncOptions,
   UseFilterOptions,
   UseFilterReturn,
+  UseFilterState,
+  UseFilterMethods,
   FilterKey,
   FilterUrlSyncOptions,
   UseListOptions,

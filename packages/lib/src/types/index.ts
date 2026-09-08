@@ -30,8 +30,7 @@ export interface UsePaginateOptions {
 	urlSync?: boolean | UrlSyncOptions;
 }
 
-export interface UsePaginateReturn<T> extends Array<T> {
-	// data
+export interface UsePaginateState {
 	/** The current page number (1-indexed). */
 	currentPage: number;
 	/** Total number of pages. Always >= 1. */
@@ -40,8 +39,6 @@ export interface UsePaginateReturn<T> extends Array<T> {
 	totalItems: number;
 	/** Current page size. */
 	pageSize: number;
-
-	// status flags
 	/** Whether there is a next page available. */
 	hasNext: boolean;
 	/** Whether there is a previous page available. */
@@ -50,8 +47,15 @@ export interface UsePaginateReturn<T> extends Array<T> {
 	isFirstPage: boolean;
 	/** Whether the current page is the last page. */
 	isLastPage: boolean;
+	/** Array of all page numbers, e.g. [1, 2, 3, 4, 5]. */
+	pageNumbers: number[];
+	/** Smart windowed pagination range with ellipses, e.g. [1, 'ellipsis', 4, 5, 6, 'ellipsis', 50]. */
+	paginationRange: PaginationRangeItem[];
+	/** Whether URL search params synchronization is active. */
+	isUrlSyncEnabled: boolean;
+}
 
-	// navigation
+export interface UsePaginateMethods {
 	/** Go to the next page. No-op if already on the last page. */
 	next: () => void;
 	/** Go to the previous page. No-op if already on the first page. */
@@ -62,22 +66,21 @@ export interface UsePaginateReturn<T> extends Array<T> {
 	goToStart: () => void;
 	/** Go to the last page. */
 	goToEnd: () => void;
-
-	// extras
 	/** Update the page size. Preserves the user's approximate position. */
 	setPageSize: (size: number) => void;
 	/** Restore the initial page size (options.pageSize or the default of 10). Preserves the user's approximate position. */
 	resetPageSize: () => void;
-	/** Array of all page numbers, e.g. [1, 2, 3, 4, 5]. */
-	pageNumbers: number[];
-	/** Smart windowed pagination range with ellipses, e.g. [1, 'ellipsis', 4, 5, 6, 'ellipsis', 50]. */
-	paginationRange: PaginationRangeItem[];
-
-	// url sync extras
-	/** Whether URL search params synchronization is active. */
-	isUrlSyncEnabled: boolean;
 	/** Helper function to generate a shareable URL string for a target page and page size, with optional base URL. */
 	getShareableUrl: (targetPage?: number, targetPageSize?: number, baseUrl?: string) => string;
+}
+
+export interface UsePaginateReturn<T> {
+	/** The current page slice. */
+	paginatedItems: T[];
+	/** Stateful properties (page number, counts, flags, ranges). */
+	state: UsePaginateState;
+	/** Methods (navigation, page size controls, URL helpers). */
+	methods: UsePaginateMethods;
 }
 
 export type SortDirection = 'asc' | 'desc';
@@ -112,7 +115,7 @@ export interface UseSortOptions<T> {
 	urlSync?: boolean | SortUrlSyncOptions;
 }
 
-export interface UseSortReturn<T> extends Array<T> {
+export interface UseSortState<T> {
 	/** The current key of T being sorted by. */
 	sortKey: keyof T | null;
 	/** The current direction of sorting. */
@@ -121,6 +124,11 @@ export interface UseSortReturn<T> extends Array<T> {
 	activeSortKey: keyof T | null;
 	/** The direction the sorted output is currently ordered by (post-debounce). May lag sortDirection while a debounce is pending. */
 	activeSortDirection: SortDirection | null;
+	/** Indicates whether a debounce or sort transition is currently pending/processing. */
+	isSorting: boolean;
+}
+
+export interface UseSortMethods<T> {
 	/** Sort by a key, with an optional explicit direction. */
 	setSort: (key: keyof T, direction?: SortDirection) => void;
 	/** Toggle sorting on a key (cycles: asc -> desc -> clear/default). */
@@ -129,8 +137,15 @@ export interface UseSortReturn<T> extends Array<T> {
 	clearSort: () => void;
 	/** Helper to get current sort indicator for a key. */
 	getSortIndicator: (key: keyof T) => SortDirection | null;
-	/** Indicates whether a debounce or sort transition is currently pending/processing. */
-	isSorting: boolean;
+}
+
+export interface UseSortReturn<T> {
+	/** The sorted items. */
+	sortedItems: T[];
+	/** Stateful properties (sort key/direction, applied state, flags). */
+	state: UseSortState<T>;
+	/** Methods (sort controls). */
+	methods: UseSortMethods<T>;
 }
 
 export type FilterKey<T> = (keyof T & string) | (string & {});
@@ -170,15 +185,20 @@ export interface UseFilterOptions<T, K extends string = string> {
 	urlSync?: boolean | FilterUrlSyncOptions<K | FilterKey<T>>;
 }
 
-export interface UseFilterReturn<T, K extends string = string> extends Array<T> {
+export interface UseFilterState<T, K extends string = string> {
 	/** The current global text search query. */
 	query: string;
 	/** The query the filtered output reflects (post-debounce). May lag query while a debounce is pending. */
 	appliedQuery: string;
-	/** Set the global text search query. */
-	setQuery: (query: string) => void;
 	/** The active structured field filter values. */
 	filters: Partial<Record<K | FilterKey<T>, unknown>>;
+	/** Whether a debounce filtering computation is currently pending. */
+	isFiltering: boolean;
+}
+
+export interface UseFilterMethods<T, K extends string = string> {
+	/** Set the global text search query. */
+	setQuery: (query: string) => void;
 	/** Set a filter value for a specific field of T or custom filter key. */
 	setFilter: (key: K | FilterKey<T>, value: unknown) => void;
 	/** Clear a filter value for a specific field of T or custom filter key. */
@@ -187,8 +207,15 @@ export interface UseFilterReturn<T, K extends string = string> extends Array<T> 
 	clearFilters: () => void;
 	/** Reset both search query and all filters. */
 	clearAll: () => void;
-	/** Whether a debounce filtering computation is currently pending. */
-	isFiltering: boolean;
+}
+
+export interface UseFilterReturn<T, K extends string = string> {
+	/** The filtered items. */
+	filteredItems: T[];
+	/** Stateful properties (query, filters, flags). */
+	state: UseFilterState<T, K>;
+	/** Methods (query and filter controls). */
+	methods: UseFilterMethods<T, K>;
 }
 
 // ─── useList (Master Pipeline Hook) ──────────────────────────────────────────
@@ -235,7 +262,7 @@ export interface UseListOptions<T, K extends string = string> {
 
 export interface UseListReturn<T, K extends string = string> {
 	// Pipeline output
-	/** The current page slice as an array-augmented object (from usePaginate). */
+	/** The paginate stage result: paginatedItems + state + methods (from usePaginate). */
 	data: UsePaginateReturn<T>;
 
 	// Filter access

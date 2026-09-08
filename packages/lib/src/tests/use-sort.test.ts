@@ -19,96 +19,93 @@ const mockUsers: User[] = [
 describe('useSort', () => {
 	// ─── Return shape contract ────────────────────────────────────
 	describe('return shape contract', () => {
-		it('attaches metadata as non-enumerable props (Object.keys/JSON.stringify see only sorted items)', () => {
+		it('returns { sortedItems, state, methods } — only those three keys', () => {
 			const { result } = renderHook(() => useSort(mockUsers, { initialKey: 'age', initialDirection: 'asc' }));
-			// Only the data items are enumerable — metadata stays hidden from
-			// Object.keys, spread, and JSON.stringify.
-			expect(Object.keys(result.current)).toEqual(['0', '1', '2']);
-			expect(JSON.stringify(result.current)).toBe(JSON.stringify([...result.current]));
-			// But the metadata is still directly accessible.
-			expect(result.current.sortKey).toBe('age');
-			expect(result.current.isSorting).toBe(false);
+			expect(Object.keys(result.current)).toEqual(['sortedItems', 'state', 'methods']);
+			expect(result.current.sortedItems.map((u) => u.id)).toEqual([2, 1, 3]); // age asc: 25, 30, 35
+			expect(result.current.state.sortKey).toBe('age');
+			expect(result.current.state.isSorting).toBe(false);
+			expect(typeof result.current.methods.setSort).toBe('function');
 		});
 
-		it('never returns the caller\u0027s items array reference (props are attached to a copy)', () => {
+		it('never attaches metadata to the items array passed by the caller', () => {
 			const { result } = renderHook(() => useSort(mockUsers));
-			expect(result.current).not.toBe(mockUsers);
-			expect([...result.current]).toEqual(mockUsers);
-			// The caller's array must stay unmodified (no props leaked onto it)
+			expect(result.current.sortedItems).toEqual(mockUsers);
+			// The caller array stays a plain array — no props leaked onto it
 			expect((mockUsers as unknown as Record<string, unknown>).sortKey).toBeUndefined();
 			expect((mockUsers as unknown as Record<string, unknown>).setSort).toBeUndefined();
 		});
 	});
 	it('returns items unmodified if no key or direction is specified', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
-		expect([...result.current]).toEqual(mockUsers);
-		expect(result.current.sortKey).toBeNull();
-		expect(result.current.sortDirection).toBeNull();
+		expect([...result.current.sortedItems]).toEqual(mockUsers);
+		expect(result.current.state.sortKey).toBeNull();
+		expect(result.current.state.sortDirection).toBeNull();
 	});
 
 	it('sorts numbers in ascending and descending directions', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
 
-		act(() => result.current.setSort('age', 'asc'));
-		expect(result.current.map((u) => u.age)).toEqual([25, 30, 35]);
-		expect(result.current.sortKey).toBe('age');
-		expect(result.current.sortDirection).toBe('asc');
+		act(() => result.current.methods.setSort('age', 'asc'));
+		expect(result.current.sortedItems.map((u) => u.age)).toEqual([25, 30, 35]);
+		expect(result.current.state.sortKey).toBe('age');
+		expect(result.current.state.sortDirection).toBe('asc');
 
-		act(() => result.current.setSort('age', 'desc'));
-		expect(result.current.map((u) => u.age)).toEqual([35, 30, 25]);
-		expect(result.current.sortDirection).toBe('desc');
+		act(() => result.current.methods.setSort('age', 'desc'));
+		expect(result.current.sortedItems.map((u) => u.age)).toEqual([35, 30, 25]);
+		expect(result.current.state.sortDirection).toBe('desc');
 	});
 
 	it('sorts strings case-insensitively using natural comparison', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
 
 		// Names: Alice, charlie, Bob -> sorted asc: Alice, Bob, charlie
-		act(() => result.current.setSort('name', 'asc'));
-		expect(result.current.map((u) => u.name)).toEqual(['Alice', 'Bob', 'charlie']);
+		act(() => result.current.methods.setSort('name', 'asc'));
+		expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'Bob', 'charlie']);
 	});
 
 	it('sorts dates correctly', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
 
-		act(() => result.current.setSort('joined', 'asc'));
-		expect(result.current.map((u) => u.id)).toEqual([3, 1, 2]); // Bob (2022), Alice (Jan 2023), Charlie (Mar 2023)
+		act(() => result.current.methods.setSort('joined', 'asc'));
+		expect(result.current.sortedItems.map((u) => u.id)).toEqual([3, 1, 2]); // Bob (2022), Alice (Jan 2023), Charlie (Mar 2023)
 	});
 
 	it('sorts booleans correctly', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
 
-		act(() => result.current.setSort('isActive', 'asc')); // false (0) then true (1)
-		expect(result.current.map((u) => u.isActive)).toEqual([false, true, true]);
+		act(() => result.current.methods.setSort('isActive', 'asc')); // false (0) then true (1)
+		expect(result.current.sortedItems.map((u) => u.isActive)).toEqual([false, true, true]);
 	});
 
 	it('cycles sort state using toggleSort (asc -> desc -> null)', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
 
-		act(() => result.current.toggleSort('age'));
-		expect(result.current.sortKey).toBe('age');
-		expect(result.current.sortDirection).toBe('asc');
-		expect(result.current.getSortIndicator('age')).toBe('asc');
+		act(() => result.current.methods.toggleSort('age'));
+		expect(result.current.state.sortKey).toBe('age');
+		expect(result.current.state.sortDirection).toBe('asc');
+		expect(result.current.methods.getSortIndicator('age')).toBe('asc');
 
-		act(() => result.current.toggleSort('age'));
-		expect(result.current.sortDirection).toBe('desc');
-		expect(result.current.getSortIndicator('age')).toBe('desc');
+		act(() => result.current.methods.toggleSort('age'));
+		expect(result.current.state.sortDirection).toBe('desc');
+		expect(result.current.methods.getSortIndicator('age')).toBe('desc');
 
-		act(() => result.current.toggleSort('age'));
-		expect(result.current.sortDirection).toBeNull();
-		expect(result.current.sortKey).toBeNull();
-		expect(result.current.getSortIndicator('age')).toBeNull();
+		act(() => result.current.methods.toggleSort('age'));
+		expect(result.current.state.sortDirection).toBeNull();
+		expect(result.current.state.sortKey).toBeNull();
+		expect(result.current.methods.getSortIndicator('age')).toBeNull();
 	});
 
 	it('switches sort key and resets direction to asc', () => {
 		const { result } = renderHook(() => useSort(mockUsers));
 
-		act(() => result.current.setSort('age', 'desc'));
-		expect(result.current.sortKey).toBe('age');
-		expect(result.current.sortDirection).toBe('desc');
+		act(() => result.current.methods.setSort('age', 'desc'));
+		expect(result.current.state.sortKey).toBe('age');
+		expect(result.current.state.sortDirection).toBe('desc');
 
-		act(() => result.current.toggleSort('name'));
-		expect(result.current.sortKey).toBe('name');
-		expect(result.current.sortDirection).toBe('asc');
+		act(() => result.current.methods.toggleSort('name'));
+		expect(result.current.state.sortKey).toBe('name');
+		expect(result.current.state.sortDirection).toBe('asc');
 	});
 
 	it('uses custom comparator function if provided', () => {
@@ -124,18 +121,18 @@ describe('useSort', () => {
 		);
 
 		// Alice (5), charlie (7), Bob (3) -> asc sorted by length: Bob (3), Alice (5), charlie (7)
-		act(() => result.current.setSort('name', 'asc'));
-		expect(result.current.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
+		act(() => result.current.methods.setSort('name', 'asc'));
+		expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
 	});
 
 	it('clears sort state with clearSort()', () => {
 		const { result } = renderHook(() => useSort(mockUsers, { initialKey: 'age', initialDirection: 'desc' }));
-		expect(result.current.sortKey).toBe('age');
+		expect(result.current.state.sortKey).toBe('age');
 
-		act(() => result.current.clearSort());
-		expect(result.current.sortKey).toBeNull();
-		expect(result.current.sortDirection).toBeNull();
-		expect([...result.current]).toEqual(mockUsers);
+		act(() => result.current.methods.clearSort());
+		expect(result.current.state.sortKey).toBeNull();
+		expect(result.current.state.sortDirection).toBeNull();
+		expect([...result.current.sortedItems]).toEqual(mockUsers);
 	});
 
 	it('preserves referential equality of return object when state does not change', () => {
@@ -161,10 +158,12 @@ describe('useSort', () => {
 
 		const { result } = renderHook(() => useSort(items));
 
-		act(() => result.current.setSort('score', 'asc'));
+		act(() => result.current.methods.setSort('score', 'asc'));
 		// 5 then 10 then nullish values at the bottom
-		expect(result.current.slice(0, 2).map((i) => i.score)).toEqual([5, 10]);
-		expect(result.current.slice(2).every((i) => i.score === null || i.score === undefined)).toBe(true);
+		expect(result.current.sortedItems.slice(0, 2).map((i) => i.score)).toEqual([5, 10]);
+		expect(result.current.sortedItems.slice(2).every((i) => i.score === null || i.score === undefined)).toBe(
+			true,
+		);
 	});
 
 	it('maintains return referential equality when inline comparators reference changes', () => {
@@ -207,10 +206,12 @@ describe('useSort', () => {
 
 		const { result } = renderHook(() => useSort(items));
 
-		act(() => result.current.setSort('score', 'desc'));
+		act(() => result.current.methods.setSort('score', 'desc'));
 		// In desc: 10 then 5, then null and undefined at the bottom
-		expect(result.current.slice(0, 2).map((i) => i.score)).toEqual([10, 5]);
-		expect(result.current.slice(2).every((i) => i.score === null || i.score === undefined)).toBe(true);
+		expect(result.current.sortedItems.slice(0, 2).map((i) => i.score)).toEqual([10, 5]);
+		expect(result.current.sortedItems.slice(2).every((i) => i.score === null || i.score === undefined)).toBe(
+			true,
+		);
 	});
 
 	it('handles NaN numbers stably and places them at the bottom', () => {
@@ -222,15 +223,15 @@ describe('useSort', () => {
 
 		const { result } = renderHook(() => useSort(items));
 
-		act(() => result.current.setSort('val', 'asc'));
-		expect(result.current[0]?.val).toBe(5);
-		expect(result.current[1]?.val).toBe(20);
-		expect(Number.isNaN(result.current[2]?.val)).toBe(true);
+		act(() => result.current.methods.setSort('val', 'asc'));
+		expect(result.current.sortedItems[0]?.val).toBe(5);
+		expect(result.current.sortedItems[1]?.val).toBe(20);
+		expect(Number.isNaN(result.current.sortedItems[2]?.val)).toBe(true);
 
-		act(() => result.current.setSort('val', 'desc'));
-		expect(result.current[0]?.val).toBe(20);
-		expect(result.current[1]?.val).toBe(5);
-		expect(Number.isNaN(result.current[2]?.val)).toBe(true);
+		act(() => result.current.methods.setSort('val', 'desc'));
+		expect(result.current.sortedItems[0]?.val).toBe(20);
+		expect(result.current.sortedItems[1]?.val).toBe(5);
+		expect(Number.isNaN(result.current.sortedItems[2]?.val)).toBe(true);
 	});
 
 	it('sorts Symbol values without throwing TypeError', () => {
@@ -243,15 +244,15 @@ describe('useSort', () => {
 
 		const { result } = renderHook(() => useSort(items));
 
-		act(() => result.current.setSort('sym', 'asc'));
-		expect(result.current.map((i) => i.id)).toEqual([2, 1]);
+		act(() => result.current.methods.setSort('sym', 'asc'));
+		expect(result.current.sortedItems.map((i) => i.id)).toEqual([2, 1]);
 	});
 
 	it('handles initialKey with initialDirection null consistently', () => {
 		const { result } = renderHook(() => useSort(mockUsers, { initialKey: 'name', initialDirection: null }));
-		expect(result.current.sortKey).toBeNull();
-		expect(result.current.sortDirection).toBeNull();
-		expect([...result.current]).toEqual(mockUsers);
+		expect(result.current.state.sortKey).toBeNull();
+		expect(result.current.state.sortDirection).toBeNull();
+		expect([...result.current.sortedItems]).toEqual(mockUsers);
 	});
 
 	it('sorts BigInt and mixed BigInt/Number values without throwing TypeError', () => {
@@ -263,11 +264,11 @@ describe('useSort', () => {
 
 		const { result } = renderHook(() => useSort(items));
 
-		act(() => result.current.setSort('val', 'asc'));
-		expect(result.current.map((i) => i.id)).toEqual([2, 3, 1]);
+		act(() => result.current.methods.setSort('val', 'asc'));
+		expect(result.current.sortedItems.map((i) => i.id)).toEqual([2, 3, 1]);
 
-		act(() => result.current.setSort('val', 'desc'));
-		expect(result.current.map((i) => i.id)).toEqual([1, 3, 2]);
+		act(() => result.current.methods.setSort('val', 'desc'));
+		expect(result.current.sortedItems.map((i) => i.id)).toEqual([1, 3, 2]);
 	});
 
 	it('sorts function values deterministically by function name', () => {
@@ -280,34 +281,34 @@ describe('useSort', () => {
 
 		const { result } = renderHook(() => useSort(items));
 
-		act(() => result.current.setSort('fn', 'asc'));
-		expect(result.current.map((i) => i.id)).toEqual([2, 1]);
+		act(() => result.current.methods.setSort('fn', 'asc'));
+		expect(result.current.sortedItems.map((i) => i.id)).toEqual([2, 1]);
 	});
 
 	it('updates getSortIndicator reference and returned value when sort state changes', () => {
 		const { result, rerender } = renderHook(() => useSort(mockUsers));
-		const initialGetSortIndicator = result.current.getSortIndicator;
+		const initialGetSortIndicator = result.current.methods.getSortIndicator;
 
-		expect(result.current.getSortIndicator('name')).toBeNull();
+		expect(result.current.methods.getSortIndicator('name')).toBeNull();
 
 		// Referential stability across re-renders when sort state does not change
 		rerender();
-		expect(result.current.getSortIndicator).toBe(initialGetSortIndicator);
+		expect(result.current.methods.getSortIndicator).toBe(initialGetSortIndicator);
 
 		// Updates reference and value when sorting changes
-		act(() => result.current.setSort('name', 'asc'));
-		expect(result.current.getSortIndicator('name')).toBe('asc');
-		expect(result.current.getSortIndicator).not.toBe(initialGetSortIndicator);
-		const ascGetSortIndicator = result.current.getSortIndicator;
+		act(() => result.current.methods.setSort('name', 'asc'));
+		expect(result.current.methods.getSortIndicator('name')).toBe('asc');
+		expect(result.current.methods.getSortIndicator).not.toBe(initialGetSortIndicator);
+		const ascGetSortIndicator = result.current.methods.getSortIndicator;
 
-		act(() => result.current.toggleSort('name'));
-		expect(result.current.getSortIndicator('name')).toBe('desc');
-		expect(result.current.getSortIndicator).not.toBe(ascGetSortIndicator);
-		const descGetSortIndicator = result.current.getSortIndicator;
+		act(() => result.current.methods.toggleSort('name'));
+		expect(result.current.methods.getSortIndicator('name')).toBe('desc');
+		expect(result.current.methods.getSortIndicator).not.toBe(ascGetSortIndicator);
+		const descGetSortIndicator = result.current.methods.getSortIndicator;
 
-		act(() => result.current.clearSort());
-		expect(result.current.getSortIndicator('name')).toBeNull();
-		expect(result.current.getSortIndicator).not.toBe(descGetSortIndicator);
+		act(() => result.current.methods.clearSort());
+		expect(result.current.methods.getSortIndicator('name')).toBeNull();
+		expect(result.current.methods.getSortIndicator).not.toBe(descGetSortIndicator);
 	});
 
 	// ─── urlSync ──────────────────────────────────────────────────────────────
@@ -320,9 +321,9 @@ describe('useSort', () => {
 				}),
 			);
 
-			expect(result.current.sortKey).toBe('age');
-			expect(result.current.sortDirection).toBe('desc');
-			expect(result.current.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
+			expect(result.current.state.sortKey).toBe('age');
+			expect(result.current.state.sortDirection).toBe('desc');
+			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
 			window.history.replaceState({}, '', '/');
 		});
 
@@ -338,11 +339,11 @@ describe('useSort', () => {
 				}),
 			);
 
-			act(() => result.current.setSort('name', 'asc'));
+			act(() => result.current.methods.setSort('name', 'asc'));
 			expect(window.location.search).toContain('sort=name');
 			expect(window.location.search).toContain('order=asc');
 
-			act(() => result.current.clearSort());
+			act(() => result.current.methods.clearSort());
 			expect(window.location.search).not.toContain('sort=');
 			expect(window.location.search).not.toContain('order=');
 
@@ -357,7 +358,7 @@ describe('useSort', () => {
 				}),
 			);
 
-			expect(result.current.sortKey).toBe('name');
+			expect(result.current.state.sortKey).toBe('name');
 
 			// Simulate back button navigating to sortBy age desc
 			window.history.replaceState({}, '', '?sortBy=age&sortDir=desc');
@@ -365,8 +366,8 @@ describe('useSort', () => {
 				window.dispatchEvent(new window.Event('popstate'));
 			});
 
-			expect(result.current.sortKey).toBe('age');
-			expect(result.current.sortDirection).toBe('desc');
+			expect(result.current.state.sortKey).toBe('age');
+			expect(result.current.state.sortDirection).toBe('desc');
 			window.history.replaceState({}, '', '/');
 		});
 	});
@@ -380,21 +381,21 @@ describe('useSort', () => {
 				}),
 			);
 
-			expect(result.current.isSorting).toBe(false);
-			expect(result.current.map((u) => u.name)).toEqual(['Alice', 'charlie', 'Bob']);
+			expect(result.current.state.isSorting).toBe(false);
+			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'charlie', 'Bob']);
 
 			// Toggle sort to name asc
-			act(() => result.current.setSort('name', 'asc'));
-			expect(result.current.sortKey).toBe('name');
-			expect(result.current.isSorting).toBe(true);
+			act(() => result.current.methods.setSort('name', 'asc'));
+			expect(result.current.state.sortKey).toBe('name');
+			expect(result.current.state.isSorting).toBe(true);
 			// Still old order before debounce timer expires
-			expect(result.current.map((u) => u.name)).toEqual(['Alice', 'charlie', 'Bob']);
+			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'charlie', 'Bob']);
 
 			// Wait for debounce timer
 			await new Promise((r) => setTimeout(r, 70));
 
-			expect(result.current.isSorting).toBe(false);
-			expect(result.current.map((u) => u.name)).toEqual(['Alice', 'Bob', 'charlie']);
+			expect(result.current.state.isSorting).toBe(false);
+			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Alice', 'Bob', 'charlie']);
 		});
 
 		it('immediately resets isSorting and sortState on clearSort', () => {
@@ -406,9 +407,9 @@ describe('useSort', () => {
 				}),
 			);
 
-			act(() => result.current.clearSort());
-			expect(result.current.sortKey).toBeNull();
-			expect(result.current.isSorting).toBe(false);
+			act(() => result.current.methods.clearSort());
+			expect(result.current.state.sortKey).toBeNull();
+			expect(result.current.state.isSorting).toBe(false);
 		});
 
 		it('supports React 18/19 useTransition option', () => {
@@ -418,10 +419,10 @@ describe('useSort', () => {
 				}),
 			);
 
-			expect(result.current.isSorting).toBe(false);
-			act(() => result.current.setSort('age', 'desc'));
-			expect(result.current.sortKey).toBe('age');
-			expect(result.current.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
+			expect(result.current.state.isSorting).toBe(false);
+			act(() => result.current.methods.setSort('age', 'desc'));
+			expect(result.current.state.sortKey).toBe('age');
+			expect(result.current.sortedItems.map((u) => u.name)).toEqual(['Bob', 'Alice', 'charlie']);
 		});
 	});
 });

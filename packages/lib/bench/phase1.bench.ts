@@ -132,7 +132,7 @@ function benchPaginate(size: number) {
 
 	const t = timeIt(50, (i) => {
 		act(() => {
-			result.current.goToPage((i % 40) + 1);
+			result.current.methods.goToPage((i % 40) + 1);
 		});
 	});
 	record(size, 'paginate: page flip (return construction)', t);
@@ -155,7 +155,7 @@ function benchFilter(size: number) {
 	const queries = ['ada', 'grace', 'alan', 'linus', 'margaret'];
 	const t = timeIt(20, (i) => {
 		act(() => {
-			result.current.setQuery(queries[i % queries.length] ?? 'ada');
+			result.current.methods.setQuery(queries[i % queries.length] ?? 'ada');
 		});
 	});
 	record(size, 'filter: text query (per-item loop)', t);
@@ -177,7 +177,7 @@ function benchFilterCustom(size: number) {
 	const depts = ['Engineering', 'Design', 'Marketing', 'Sales', 'Support'];
 	const t = timeIt(20, (i) => {
 		act(() => {
-			result.current.setFilter('department', depts[i % depts.length] ?? 'Engineering');
+			result.current.methods.setFilter('department', depts[i % depts.length] ?? 'Engineering');
 		});
 	});
 	record(size, 'filter: custom predicate (per-item lookup)', t);
@@ -191,7 +191,7 @@ function benchSortKey(size: number, key: 'name' | 'salary' | 'hiredAt', label: s
 	// Alternate asc/desc on the same key — every run is a full re-sort
 	const t = timeIt(10, (i) => {
 		act(() => {
-			result.current.setSort(key, i % 2 === 0 ? 'asc' : 'desc');
+			result.current.methods.setSort(key, i % 2 === 0 ? 'asc' : 'desc');
 		});
 	});
 	record(size, `sort: ${label} re-sort`, t);

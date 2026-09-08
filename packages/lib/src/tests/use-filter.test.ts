@@ -18,51 +18,57 @@ const mockProducts: Product[] = [
 describe('useFilter', () => {
 	// ─── Return shape contract ────────────────────────────────────
 	describe('return shape contract', () => {
-		it('attaches metadata as non-enumerable props (Object.keys/JSON.stringify see only filtered items)', () => {
+		it('returns { filteredItems, state, methods } — only those three keys', () => {
 			const { result } = renderHook(() => useFilter(mockProducts));
-			// Only the data items are enumerable — metadata stays hidden from
-			// Object.keys, spread, and JSON.stringify.
-			expect(Object.keys(result.current)).toEqual(['0', '1', '2']);
-			expect(JSON.stringify(result.current)).toBe(JSON.stringify(mockProducts));
-			// But the metadata is still directly accessible.
-			expect(result.current.query).toBe('');
-			expect(result.current.isFiltering).toBe(false);
+			expect(Object.keys(result.current)).toEqual(['filteredItems', 'state', 'methods']);
+			expect(result.current.filteredItems).toEqual(mockProducts);
+			expect(result.current.state.query).toBe('');
+			expect(result.current.state.isFiltering).toBe(false);
+			expect(typeof result.current.methods.setQuery).toBe('function');
+		});
+
+		it('never attaches metadata to the items array passed by the caller', () => {
+			const { result } = renderHook(() => useFilter(mockProducts));
+			expect(result.current.filteredItems).toEqual(mockProducts);
+			// The caller array stays a plain array — no props leaked onto it
+			expect((mockProducts as unknown as Record<string, unknown>).query).toBeUndefined();
+			expect((mockProducts as unknown as Record<string, unknown>).setQuery).toBeUndefined();
 		});
 	});
 
 	it('returns items unmodified when query and filters are empty', () => {
 		const { result } = renderHook(() => useFilter(mockProducts));
-		expect([...result.current]).toEqual(mockProducts);
-		expect(result.current.query).toBe('');
-		expect(result.current.filters).toEqual({});
+		expect([...result.current.filteredItems]).toEqual(mockProducts);
+		expect(result.current.state.query).toBe('');
+		expect(result.current.state.filters).toEqual({});
 	});
 
 	it('filters items by global text search query case-insensitively', () => {
 		const { result } = renderHook(() => useFilter(mockProducts));
 
-		act(() => result.current.setQuery('holo'));
-		expect([...result.current]).toEqual([mockProducts[1]!]);
+		act(() => result.current.methods.setQuery('holo'));
+		expect([...result.current.filteredItems]).toEqual([mockProducts[1]!]);
 
-		act(() => result.current.setQuery('pro')); // Matches 'CyberDeck Pro'
-		expect([...result.current]).toEqual([mockProducts[0]!]);
+		act(() => result.current.methods.setQuery('pro')); // Matches 'CyberDeck Pro'
+		expect([...result.current.filteredItems]).toEqual([mockProducts[0]!]);
 
-		act(() => result.current.setQuery('  GADGETS  ')); // Matches category string value case-insensitively
-		expect([...result.current]).toEqual([mockProducts[0]!, mockProducts[1]!]);
+		act(() => result.current.methods.setQuery('  GADGETS  ')); // Matches category string value case-insensitively
+		expect([...result.current.filteredItems]).toEqual([mockProducts[0]!, mockProducts[1]!]);
 	});
 
 	it('filters items by structured field filters', () => {
 		const { result } = renderHook(() => useFilter(mockProducts));
 
-		act(() => result.current.setFilter('category', 'Audio'));
-		expect([...result.current]).toEqual([mockProducts[2]!]);
+		act(() => result.current.methods.setFilter('category', 'Audio'));
+		expect([...result.current.filteredItems]).toEqual([mockProducts[2]!]);
 
-		act(() => result.current.setFilter('price', 150));
+		act(() => result.current.methods.setFilter('price', 150));
 		// Category is still 'Audio', so matching both category=Audio and price=150 should yield []
-		expect([...result.current]).toEqual([]);
+		expect([...result.current.filteredItems]).toEqual([]);
 
-		act(() => result.current.clearFilter('category'));
+		act(() => result.current.methods.clearFilter('category'));
 		// Category cleared, matching price=150 yields HoloLens Mini
-		expect([...result.current]).toEqual([mockProducts[1]!]);
+		expect([...result.current.filteredItems]).toEqual([mockProducts[1]!]);
 	});
 
 	it('handles clearing all search query and structured filters', () => {
@@ -72,16 +78,16 @@ describe('useFilter', () => {
 				initialFilters: { category: 'Gadgets' },
 			}),
 		);
-		expect([...result.current]).toEqual([mockProducts[0]!]);
+		expect([...result.current.filteredItems]).toEqual([mockProducts[0]!]);
 
-		act(() => result.current.clearFilters());
-		expect(result.current.filters).toEqual({});
-		expect(result.current.query).toBe('pro');
+		act(() => result.current.methods.clearFilters());
+		expect(result.current.state.filters).toEqual({});
+		expect(result.current.state.query).toBe('pro');
 
-		act(() => result.current.clearAll());
-		expect(result.current.query).toBe('');
-		expect(result.current.filters).toEqual({});
-		expect([...result.current]).toEqual(mockProducts);
+		act(() => result.current.methods.clearAll());
+		expect(result.current.state.query).toBe('');
+		expect(result.current.state.filters).toEqual({});
+		expect([...result.current.filteredItems]).toEqual(mockProducts);
 	});
 
 	it('supports custom field filter predicates', () => {
@@ -96,8 +102,8 @@ describe('useFilter', () => {
 			}),
 		);
 
-		act(() => result.current.setFilter('price', 200)); // returns products with price < 200
-		expect(result.current.map((p) => p.name)).toEqual(['HoloLens Mini', 'Acoustic Pulse']);
+		act(() => result.current.methods.setFilter('price', 200)); // returns products with price < 200
+		expect(result.current.filteredItems.map((p) => p.name)).toEqual(['HoloLens Mini', 'Acoustic Pulse']);
 	});
 
 	it('preserves referential equality of return object when state does not change', () => {
@@ -115,8 +121,8 @@ describe('useFilter', () => {
 		];
 		const { result } = renderHook(() => useFilter(itemsWithAll));
 
-		act(() => result.current.setFilter('status', 'All'));
-		expect([...result.current]).toEqual([{ id: 1, status: 'All' }]);
+		act(() => result.current.methods.setFilter('status', 'All'));
+		expect([...result.current.filteredItems]).toEqual([{ id: 1, status: 'All' }]);
 	});
 
 	it('derives searchFields across items when items[0] has missing or non-string fields', () => {
@@ -126,20 +132,22 @@ describe('useFilter', () => {
 		];
 		const { result } = renderHook(() => useFilter(itemsWithMissingFirst as any));
 
-		act(() => result.current.setQuery('detail'));
-		expect([...result.current]).toEqual([{ id: 2, name: 'Widget', description: 'Gadget detail' }]);
+		act(() => result.current.methods.setQuery('detail'));
+		expect([...result.current.filteredItems]).toEqual([
+			{ id: 2, name: 'Widget', description: 'Gadget detail' },
+		]);
 	});
 
 	it('removes the filter key entirely when setFilter is called with undefined', () => {
 		const { result } = renderHook(() => useFilter(mockProducts));
 
-		act(() => result.current.setFilter('category', 'Audio'));
-		expect('category' in result.current.filters).toBe(true);
-		expect(result.current.filters.category).toBe('Audio');
+		act(() => result.current.methods.setFilter('category', 'Audio'));
+		expect('category' in result.current.state.filters).toBe(true);
+		expect(result.current.state.filters.category).toBe('Audio');
 
-		act(() => result.current.setFilter('category', undefined));
-		expect('category' in result.current.filters).toBe(false);
-		expect(Object.keys(result.current.filters)).toEqual([]);
+		act(() => result.current.methods.setFilter('category', undefined));
+		expect('category' in result.current.state.filters).toBe(false);
+		expect(Object.keys(result.current.state.filters)).toEqual([]);
 	});
 
 	it('maintains return referential equality when inline customFilters reference changes', () => {
@@ -190,14 +198,9 @@ describe('useFilter', () => {
 		expect(firstFilteredItems).toBe(secondFilteredItems);
 	});
 
-	it('never returns the caller\u0027s items array reference (props are attached to a copy)', () => {
-		const { result } = renderHook(() => useFilter(mockProducts));
-		expect(result.current).not.toBe(mockProducts);
-		expect([...result.current]).toEqual(mockProducts);
-		// The caller's array must stay unmodified (no props leaked onto it)
-		expect((mockProducts as unknown as Record<string, unknown>).query).toBeUndefined();
-		expect((mockProducts as unknown as Record<string, unknown>).setQuery).toBeUndefined();
-	});
+	// (Covered in the return shape contract describe above: the caller array
+	// never gets metadata attached — the return is a plain object, so there is
+	// no array to decorate and no copy required.)
 
 	it('correctly filters items by NaN and Date values', () => {
 		const complexItems = [
@@ -208,16 +211,16 @@ describe('useFilter', () => {
 
 		const { result } = renderHook(() => useFilter(complexItems));
 
-		act(() => result.current.setFilter('val', NaN));
-		expect(result.current.map((i) => i.id)).toEqual([1, 3]);
+		act(() => result.current.methods.setFilter('val', NaN));
+		expect(result.current.filteredItems.map((i) => i.id)).toEqual([1, 3]);
 
-		act(() => result.current.clearFilter('val'));
-		act(() => result.current.setFilter('date', new Date('2023-01-01')));
-		expect(result.current.map((i) => i.id)).toEqual([1]);
+		act(() => result.current.methods.clearFilter('val'));
+		act(() => result.current.methods.setFilter('date', new Date('2023-01-01')));
+		expect(result.current.filteredItems.map((i) => i.id)).toEqual([1]);
 
 		// Test date string filter matching Date instance
-		act(() => result.current.setFilter('date', '2023-05-01'));
-		expect(result.current.map((i) => i.id)).toEqual([2, 3]);
+		act(() => result.current.methods.setFilter('date', '2023-05-01'));
+		expect(result.current.filteredItems.map((i) => i.id)).toEqual([2, 3]);
 	});
 
 	it('matches -0 and 0 symmetrically in exact filter matching', () => {
@@ -228,8 +231,8 @@ describe('useFilter', () => {
 
 		const { result } = renderHook(() => useFilter(itemsWithZeros));
 
-		act(() => result.current.setFilter('count', -0));
-		expect(result.current.map((i) => i.id)).toEqual([1]);
+		act(() => result.current.methods.setFilter('count', -0));
+		expect(result.current.filteredItems.map((i) => i.id)).toEqual([1]);
 	});
 
 	it('supports synthetic/custom filter keys that do not exist on the item type', () => {
@@ -262,19 +265,19 @@ describe('useFilter', () => {
 		);
 
 		// Initial filter: active (Alice and Bob)
-		expect(result.current.map((u) => u.name)).toEqual(['Alice', 'Bob']);
+		expect(result.current.filteredItems.map((u) => u.name)).toEqual(['Alice', 'Bob']);
 
 		// Change to admins
-		act(() => result.current.setFilter('status', 'admins'));
-		expect(result.current.map((u) => u.name)).toEqual(['Alice']);
+		act(() => result.current.methods.setFilter('status', 'admins'));
+		expect(result.current.filteredItems.map((u) => u.name)).toEqual(['Alice']);
 
 		// Change to archived
-		act(() => result.current.setFilter('status', 'archived'));
-		expect(result.current.map((u) => u.name)).toEqual(['Charlie']);
+		act(() => result.current.methods.setFilter('status', 'archived'));
+		expect(result.current.filteredItems.map((u) => u.name)).toEqual(['Charlie']);
 
 		// Clear status filter
-		act(() => result.current.clearFilter('status'));
-		expect(result.current.length).toBe(3);
+		act(() => result.current.methods.clearFilter('status'));
+		expect(result.current.filteredItems.length).toBe(3);
 	});
 
 	it('preserves field autocompletion and prevents key from collapsing to never when ternary/empty initialFilters are passed', () => {
@@ -297,9 +300,9 @@ describe('useFilter', () => {
 			}),
 		);
 
-		expect(result.current.length).toBe(1);
-		act(() => result.current.setFilter('treatmentStatus', 'discharged'));
-		expect(result.current.length).toBe(0);
+		expect(result.current.filteredItems.length).toBe(1);
+		act(() => result.current.methods.setFilter('treatmentStatus', 'discharged'));
+		expect(result.current.filteredItems.length).toBe(0);
 	});
 
 	// ─── Debounce & isFiltering ──────────────────────────────────────────────
@@ -312,22 +315,22 @@ describe('useFilter', () => {
 			);
 
 			// Initially synchronous
-			expect(result.current.isFiltering).toBe(false);
-			expect(result.current.length).toBe(3);
+			expect(result.current.state.isFiltering).toBe(false);
+			expect(result.current.filteredItems.length).toBe(3);
 
 			// Update query
-			act(() => result.current.setQuery('HoloLens'));
-			expect(result.current.query).toBe('HoloLens');
-			expect(result.current.isFiltering).toBe(true);
+			act(() => result.current.methods.setQuery('HoloLens'));
+			expect(result.current.state.query).toBe('HoloLens');
+			expect(result.current.state.isFiltering).toBe(true);
 			// Still returns all 3 items before debounce timer expires
-			expect(result.current.length).toBe(3);
+			expect(result.current.filteredItems.length).toBe(3);
 
 			// Wait for debounce timer
 			await new Promise((r) => setTimeout(r, 70));
 
-			expect(result.current.isFiltering).toBe(false);
-			expect(result.current.length).toBe(1);
-			expect(result.current[0]?.name).toBe('HoloLens Mini');
+			expect(result.current.state.isFiltering).toBe(false);
+			expect(result.current.filteredItems.length).toBe(1);
+			expect(result.current.filteredItems[0]?.name).toBe('HoloLens Mini');
 		});
 
 		it('immediately resets query and debouncedQuery on clearAll', () => {
@@ -338,10 +341,10 @@ describe('useFilter', () => {
 				}),
 			);
 
-			act(() => result.current.clearAll());
-			expect(result.current.query).toBe('');
-			expect(result.current.isFiltering).toBe(false);
-			expect(result.current.length).toBe(3);
+			act(() => result.current.methods.clearAll());
+			expect(result.current.state.query).toBe('');
+			expect(result.current.state.isFiltering).toBe(false);
+			expect(result.current.filteredItems.length).toBe(3);
 		});
 	});
 
@@ -356,10 +359,10 @@ describe('useFilter', () => {
 				}),
 			);
 
-			expect(result.current.query).toBe('CyberDeck');
-			expect(result.current.filters.category).toBe('Gadgets');
-			expect(result.current.length).toBe(1);
-			expect(result.current[0]?.name).toBe('CyberDeck Pro');
+			expect(result.current.state.query).toBe('CyberDeck');
+			expect(result.current.state.filters.category).toBe('Gadgets');
+			expect(result.current.filteredItems.length).toBe(1);
+			expect(result.current.filteredItems[0]?.name).toBe('CyberDeck Pro');
 			window.history.replaceState({}, '', '/');
 		});
 
@@ -375,13 +378,13 @@ describe('useFilter', () => {
 				}),
 			);
 
-			act(() => result.current.setQuery('CyberDeck'));
+			act(() => result.current.methods.setQuery('CyberDeck'));
 			expect(window.location.search).toContain('search=CyberDeck');
 
-			act(() => result.current.setFilter('category', 'Audio'));
+			act(() => result.current.methods.setFilter('category', 'Audio'));
 			expect(window.location.search).toContain('cat=Audio');
 
-			act(() => result.current.clearFilter('category'));
+			act(() => result.current.methods.clearFilter('category'));
 			expect(window.location.search).not.toContain('cat=');
 
 			window.history.replaceState({}, '', '/');
@@ -395,7 +398,7 @@ describe('useFilter', () => {
 				}),
 			);
 
-			expect(result.current.query).toBe('Initial');
+			expect(result.current.state.query).toBe('Initial');
 
 			// Simulate back button navigating to new search
 			window.history.replaceState({}, '', '?q=Acoustic');
@@ -403,9 +406,9 @@ describe('useFilter', () => {
 				window.dispatchEvent(new window.Event('popstate'));
 			});
 
-			expect(result.current.query).toBe('Acoustic');
-			expect(result.current.length).toBe(1);
-			expect(result.current[0]?.name).toBe('Acoustic Pulse');
+			expect(result.current.state.query).toBe('Acoustic');
+			expect(result.current.filteredItems.length).toBe(1);
+			expect(result.current.filteredItems[0]?.name).toBe('Acoustic Pulse');
 			window.history.replaceState({}, '', '/');
 		});
 
@@ -416,11 +419,11 @@ describe('useFilter', () => {
 				}),
 			);
 
-			expect(result.current.isFiltering).toBe(false);
-			act(() => result.current.setQuery('Pulse'));
-			expect(result.current.query).toBe('Pulse');
-			expect(result.current.length).toBe(1);
-			expect(result.current[0]?.name).toBe('Acoustic Pulse');
+			expect(result.current.state.isFiltering).toBe(false);
+			act(() => result.current.methods.setQuery('Pulse'));
+			expect(result.current.state.query).toBe('Pulse');
+			expect(result.current.filteredItems.length).toBe(1);
+			expect(result.current.filteredItems[0]?.name).toBe('Acoustic Pulse');
 		});
 	});
 });

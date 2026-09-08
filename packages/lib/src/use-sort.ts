@@ -466,43 +466,37 @@ export function useSort<T>(items: T[], options?: UseSortOptions<T>): UseSortRetu
 
 	const isSorting = isDebouncing || isPending;
 
-	// Array-augmented return: the value IS the sorted items (spreads, maps,
-	// and JSON.stringify see only the data), with sort state/controls attached
-	// as non-enumerable properties — same pattern as usePaginate.
-	return useMemo(() => {
-		// Copy so we never attach props to the caller's array (sortedItems may
-		// be the original items reference when no sort is active).
-		const returnArr = sortedItems.slice();
-
-		const props: Record<string, unknown> = {
+	// Namespaced return: the sorted data plus `state` (stateful properties)
+	// and `methods` (controls) — the shared return contract for all sub hooks.
+	return useMemo(
+		() =>
+			({
+				sortedItems,
+				state: {
+					sortKey,
+					sortDirection,
+					activeSortKey,
+					activeSortDirection,
+					isSorting,
+				},
+				methods: {
+					setSort,
+					toggleSort,
+					clearSort,
+					getSortIndicator,
+				},
+			}) satisfies UseSortReturn<T>,
+		[
+			sortedItems,
 			sortKey,
 			sortDirection,
 			activeSortKey,
 			activeSortDirection,
+			isSorting,
 			setSort,
 			toggleSort,
 			clearSort,
 			getSortIndicator,
-			isSorting,
-		};
-		for (const key in props) {
-			Object.defineProperty(returnArr, key, {
-				value: props[key],
-				writable: true,
-				configurable: true,
-			});
-		}
-		return returnArr as unknown as UseSortReturn<T>;
-	}, [
-		sortedItems,
-		sortKey,
-		sortDirection,
-		activeSortKey,
-		activeSortDirection,
-		setSort,
-		toggleSort,
-		clearSort,
-		getSortIndicator,
-		isSorting,
-	]);
+		],
+	);
 }
