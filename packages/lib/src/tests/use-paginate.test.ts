@@ -10,6 +10,20 @@ function items(n: number): number[] {
 }
 
 describe('usePaginate', () => {
+	// ─── Return shape contract ────────────────────────────────────
+	describe('return shape contract', () => {
+		it('attaches metadata as non-enumerable props (Object.keys/JSON.stringify see only page items)', () => {
+			const { result } = renderHook(() => usePaginate(items(25), { pageSize: 10 }));
+			// Only the 10 page items are enumerable — metadata stays hidden from
+			// Object.keys, spread, and JSON.stringify.
+			expect(Object.keys(result.current)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+			expect(JSON.stringify(result.current)).toBe(JSON.stringify(items(10)));
+			// But the metadata is still directly accessible.
+			expect(result.current.currentPage).toBe(1);
+			expect(result.current.totalPages).toBe(3);
+		});
+	});
+
 	// ─── Empty array ──────────────────────────────────────────────
 	describe('empty array', () => {
 		it('returns totalPages = 1 and empty currentItems', () => {

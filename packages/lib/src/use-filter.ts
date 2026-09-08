@@ -324,7 +324,9 @@ export function useFilter<T, K extends string = string>(
 		setFilters((prev) => (Object.keys(prev).length === 0 ? prev : {}));
 	}, []);
 
-	// Compute search fields: fallback to sample of items with string/number values across items
+	// Compute search fields: fallback to sample of items with string/number values across items.
+	// When searchFieldsProp is provided the memo early-returns it — identity is
+	// stable across items changes, so downstream memos are not invalidated.
 	const searchFieldsProp = options?.searchFields;
 	const resolvedSearchFields = useMemo<Array<keyof T>>(() => {
 		if (searchFieldsProp) return searchFieldsProp;
@@ -356,10 +358,26 @@ export function useFilter<T, K extends string = string>(
 			return items;
 		}
 
+		// Hoisted per-run constants — the original re-read these per item.
+		const hasQuery = normalizedQuery !== '';
+		const fieldsToSearch = resolvedSearchFields;
+
+		// Resolve custom predicates once per memo run. The original looked up
+		// customFiltersRef.current?.[key] for every item × active filter — pure
+		// overhead once resolved here (refs are stable within a single run).
+		const activePredicates: Array<{
+			key: K;
+			value: unknown;
+			predicate: ((item: T, filterValue: unknown) => boolean) | undefined;
+		}> = activeFilterEntries.map(([filterKey, filterVal]) => ({
+			key: filterKey as K,
+			value: filterVal,
+			predicate: customFiltersRef.current?.[filterKey as K],
+		}));
+
 		return items.filter((item) => {
 			// 1. Check global text query
-			if (normalizedQuery) {
-				const fieldsToSearch = resolvedSearchFields;
+			if (hasQuery) {
 				const matchesQuery = fieldsToSearch.some((field) => {
 					const val = item[field];
 					if (val === null || val === undefined) return false;
@@ -369,14 +387,10 @@ export function useFilter<T, K extends string = string>(
 				if (!matchesQuery) return false;
 			}
 
-			// 2. Check field-specific filters
-			for (const [filterKey, filterVal] of activeFilterEntries) {
-				const key = filterKey as K;
-
-				// Custom filter predicate
-				const customFilter = customFiltersRef.current?.[key];
-				if (customFilter) {
-					if (!customFilter(item, filterVal)) return false;
+			// 2. Check field-specific filters (predicates pre-resolved above)
+			for (const { key, value: filterVal, predicate } of activePredicates) {
+				if (predicate) {
+					if (!predicate(item, filterVal)) return false;
 					continue;
 				}
 

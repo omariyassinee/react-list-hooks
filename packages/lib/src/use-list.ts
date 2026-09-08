@@ -1,14 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import type {
-	FilterKey,
-	ListUrlSyncOptions,
-	UseListOptions,
-	UseListReturn,
-} from "./types";
-import { getUrlParamNumber } from "./url-params";
-import { useFilter } from "./use-filter";
-import { usePaginate } from "./use-paginate";
-import { useSort } from "./use-sort";
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import type { FilterKey, ListUrlSyncOptions, UseListOptions, UseListReturn } from './types';
+import { getUrlParamNumber } from './url-params';
+import { useFilter } from './use-filter';
+import { usePaginate } from './use-paginate';
+import { useSort } from './use-sort';
 
 // Identity-stable empty map — a `?? {}` inline default would create a new object
 // every render, destabilizing the filterUrlSync memo and re-running the filter
@@ -23,25 +18,23 @@ export function useList<T, K extends string = string>(
 
 	// ─── Parse unified URL sync config ─────────────────────────────────────
 	const urlSyncConfig: ListUrlSyncOptions<ActualKey> =
-		typeof options?.urlSync === "object"
-			? options.urlSync
-			: { enabled: Boolean(options?.urlSync) };
+		typeof options?.urlSync === 'object' ? options.urlSync : { enabled: Boolean(options?.urlSync) };
 
 	const isUrlSyncEnabled = Boolean(urlSyncConfig.enabled);
-	const historyMode = urlSyncConfig.historyMode ?? "replace";
+	const historyMode = urlSyncConfig.historyMode ?? 'replace';
 	const keepOtherParams = urlSyncConfig.keepOtherParams ?? true;
 
 	// Filter URL params
-	const queryParam = urlSyncConfig.queryParam ?? "q";
+	const queryParam = urlSyncConfig.queryParam ?? 'q';
 	const filterParamMap = urlSyncConfig.filterParamMap ?? EMPTY_PARAM_MAP;
 
 	// Sort URL params
-	const sortKeyParam = urlSyncConfig.sortKeyParam ?? "sortBy";
-	const directionParam = urlSyncConfig.directionParam ?? "sortDir";
+	const sortKeyParam = urlSyncConfig.sortKeyParam ?? 'sortBy';
+	const directionParam = urlSyncConfig.directionParam ?? 'sortDir';
 
 	// Paginate URL params
-	const pageParam = urlSyncConfig.pageParam ?? "page";
-	const pageSizeParam = urlSyncConfig.pageSizeParam ?? "pageSize";
+	const pageParam = urlSyncConfig.pageParam ?? 'page';
+	const pageSizeParam = urlSyncConfig.pageSizeParam ?? 'pageSize';
 	const syncPageSize = urlSyncConfig.syncPageSize ?? true;
 
 	// ─── Build per-hook URL sync configs (delegated to each hook) ──────────
@@ -69,10 +62,7 @@ export function useList<T, K extends string = string>(
 		return Array.from(names);
 	}, [queryParam, filterParamMap, options?.filter?.initialFilters]);
 
-	const sortParamNames = useMemo(
-		() => [sortKeyParam, directionParam],
-		[sortKeyParam, directionParam],
-	);
+	const sortParamNames = useMemo(() => [sortKeyParam, directionParam], [sortKeyParam, directionParam]);
 	const paginateParamNames = useMemo(
 		() => (syncPageSize ? [pageParam, pageSizeParam] : [pageParam]),
 		[pageParam, pageSizeParam, syncPageSize],
@@ -87,9 +77,7 @@ export function useList<T, K extends string = string>(
 						paramMap: filterParamMap as Record<string, string>,
 						// Round-trip unmapped filter keys that are declared in
 						// initialFilters — the common pipeline case (see BUGS.md #11).
-						restoreKeys: Object.keys(
-							options?.filter?.initialFilters ?? {},
-						) as Array<ActualKey>,
+						restoreKeys: Object.keys(options?.filter?.initialFilters ?? {}) as Array<ActualKey>,
 						historyMode,
 						keepOtherParams,
 						preserveParams: [...sortParamNames, ...paginateParamNames],
@@ -202,12 +190,7 @@ export function useList<T, K extends string = string>(
 	// Consume the sort output whenever the sort hook is actually sorting —
 	// keying off `options.sort !== undefined` alone would discard the sorted
 	// output if sort state originates elsewhere (see BUGS.md #6).
-	const paginateInput =
-		activeSortKey !== null
-			? sortedItems
-			: isFilterStageEnabled
-				? filteredItems
-				: items;
+	const paginateInput = activeSortKey !== null ? sortedItems : isFilterStageEnabled ? filteredItems : items;
 
 	// Read initial page from URL if url sync is enabled AND the paginate stage
 	// is configured — an omitted stage must not read its params from the URL
@@ -223,6 +206,12 @@ export function useList<T, K extends string = string>(
 		initialPage: initialPageFromUrl ?? options?.paginate?.initialPage,
 		urlSync: paginateUrlSync,
 	});
+
+	// Stable paginate callbacks (useCallback([], …) inside usePaginate) —
+	// depending on these instead of `data` keeps the page-reset effect below
+	// from re-running on every page/items/pageSize identity change, and makes
+	// resetAll identity-stable.
+	const { goToStart, resetPageSize } = data;
 
 	// ─── Automatic page-1 reset on filter/sort change ──────────────────────
 	// Track the *applied* (post-debounce) pipeline inputs so the page resets
@@ -249,23 +238,17 @@ export function useList<T, K extends string = string>(
 		const queryChanged = prevAppliedQueryRef.current !== appliedQuery;
 		const filtersChanged = prevFiltersRef.current !== filters;
 		const sortKeyChanged = prevActiveSortKeyRef.current !== activeSortKey;
-		const sortDirectionChanged =
-			prevActiveSortDirectionRef.current !== activeSortDirection;
+		const sortDirectionChanged = prevActiveSortDirectionRef.current !== activeSortDirection;
 
 		prevAppliedQueryRef.current = appliedQuery;
 		prevActiveSortKeyRef.current = activeSortKey;
 		prevActiveSortDirectionRef.current = activeSortDirection;
 		prevFiltersRef.current = filters;
 
-		if (
-			queryChanged ||
-			filtersChanged ||
-			sortKeyChanged ||
-			sortDirectionChanged
-		) {
-			data.goToStart();
+		if (queryChanged || filtersChanged || sortKeyChanged || sortDirectionChanged) {
+			goToStart();
 		}
-	}, [appliedQuery, filters, activeSortKey, activeSortDirection, data]);
+	}, [appliedQuery, filters, activeSortKey, activeSortDirection, goToStart]);
 
 	// ─── Wrapped callbacks ─────────────────────────────────────────────────
 	// The page-1 reset is handled reactively via the useEffect above,
@@ -284,11 +267,11 @@ export function useList<T, K extends string = string>(
 	const resetAll = useCallback(() => {
 		rawClearAll();
 		rawClearSort();
-		data.goToStart();
+		goToStart();
 		// Restore the initial pageSize too — "reset all" that skips a core
 		// paginate option is surprising (see BUGS.md #15).
-		data.resetPageSize();
-	}, [rawClearAll, rawClearSort, data]);
+		resetPageSize();
+	}, [rawClearAll, rawClearSort, goToStart, resetPageSize]);
 
 	// ─── Aggregate isProcessing ────────────────────────────────────────────
 	const isProcessing = isFiltering || isSorting;

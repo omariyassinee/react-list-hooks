@@ -356,15 +356,18 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 	// --- Return: single useMemo with inline slice and status flags ---
 
 	return useMemo(() => {
-		const currentItems = items.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
+		// Slice once and attach props directly — no second copy ([...currentItems]).
+		const returnArr = items.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
 
 		const hasNext = effectivePage < totalPages;
 		const hasPrev = effectivePage > 1;
 		const isFirstPage = effectivePage === 1;
 		const isLastPage = effectivePage === totalPages;
 
-		const returnArr = [...currentItems];
-		for (const [key, value] of Object.entries({
+		// Props stay non-enumerable (defineProperty without `enumerable`),
+		// so Object.keys()/JSON.stringify() see only the page items —
+		// matching the historical shape consumers may rely on.
+		const props: Record<string, unknown> = {
 			currentPage: effectivePage,
 			totalPages,
 			totalItems,
@@ -384,8 +387,13 @@ export function usePaginate<T>(items: T[], options?: UsePaginateOptions): UsePag
 			paginationRange,
 			isUrlSyncEnabled,
 			getShareableUrl,
-		})) {
-			Object.defineProperty(returnArr, key, { value, writable: true, configurable: true });
+		};
+		for (const key in props) {
+			Object.defineProperty(returnArr, key, {
+				value: props[key],
+				writable: true,
+				configurable: true,
+			});
 		}
 		return returnArr as unknown as UsePaginateReturn<T>;
 	}, [

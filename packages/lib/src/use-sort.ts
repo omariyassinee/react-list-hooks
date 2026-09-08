@@ -87,6 +87,83 @@ interface DecoratedSortItem<T> {
 	index: number;
 }
 
+// ─── Specialized comparators for homogeneous columns ───────────────────────
+// When every non-nullish value in the sort column shares one type, the sort
+// can use one of these instead of compareValues' per-comparison type-dispatch
+// chain (~10 branches × n log n comparisons — the dominant sort cost at
+// 100k+ items). Each replicates compareValues' exact semantics for its type,
+// including NULLS LAST (nullish always sort after non-nullish, regardless of
+// direction) and the original NaN handling for numbers.
+
+function numericComparator<T>(directionMultiplier: number) {
+	return (a: DecoratedSortItem<T>, b: DecoratedSortItem<T>): number => {
+		const valueA = a.val;
+		const valueB = b.val;
+		const isANullish = valueA === null || valueA === undefined;
+		const isBNullish = valueB === null || valueB === undefined;
+		if (isANullish && isBNullish) return a.index - b.index;
+		if (isANullish) return 1;
+		if (isBNullish) return -1;
+		const na = valueA as number;
+		const nb = valueB as number;
+		const isANaN = Number.isNaN(na);
+		const isBNaN = Number.isNaN(nb);
+		if (isANaN && isBNaN) return a.index - b.index;
+		if (isANaN) return 1;
+		if (isBNaN) return -1;
+		const cmp = (na - nb) * directionMultiplier;
+		return cmp !== 0 ? cmp : a.index - b.index;
+	};
+}
+
+// Dates are pre-extracted to timestamps during decoration, so this mirrors
+// compareValues' Date branch (plain subtraction, no NaN special-casing)
+// exactly — including its behavior for invalid dates.
+function timestampComparator<T>(directionMultiplier: number) {
+	return (a: DecoratedSortItem<T>, b: DecoratedSortItem<T>): number => {
+		const valueA = a.val;
+		const valueB = b.val;
+		const isANullish = valueA === null || valueA === undefined;
+		const isBNullish = valueB === null || valueB === undefined;
+		if (isANullish && isBNullish) return a.index - b.index;
+		if (isANullish) return 1;
+		if (isBNullish) return -1;
+		const cmp = ((valueA as number) - (valueB as number)) * directionMultiplier;
+		return cmp !== 0 ? cmp : a.index - b.index;
+	};
+}
+
+function stringComparator<T>(directionMultiplier: number) {
+	return (a: DecoratedSortItem<T>, b: DecoratedSortItem<T>): number => {
+		const valueA = a.val;
+		const valueB = b.val;
+		const isANullish = valueA === null || valueA === undefined;
+		const isBNullish = valueB === null || valueB === undefined;
+		if (isANullish && isBNullish) return a.index - b.index;
+		if (isANullish) return 1;
+		if (isBNullish) return -1;
+		const cmp =
+			(defaultCollator
+				? defaultCollator.compare(valueA as string, valueB as string)
+				: (valueA as string).localeCompare(valueB as string)) * directionMultiplier;
+		return cmp !== 0 ? cmp : a.index - b.index;
+	};
+}
+
+function booleanComparator<T>(directionMultiplier: number) {
+	return (a: DecoratedSortItem<T>, b: DecoratedSortItem<T>): number => {
+		const valueA = a.val;
+		const valueB = b.val;
+		const isANullish = valueA === null || valueA === undefined;
+		const isBNullish = valueB === null || valueB === undefined;
+		if (isANullish && isBNullish) return a.index - b.index;
+		if (isANullish) return 1;
+		if (isBNullish) return -1;
+		const cmp = ((valueA ? 1 : 0) - (valueB ? 1 : 0)) * directionMultiplier;
+		return cmp !== 0 ? cmp : a.index - b.index;
+	};
+}
+
 function getInitialSortState<T>(
 	options?: UseSortOptions<T>,
 	isUrlSyncEnabled?: boolean,
@@ -309,23 +386,57 @@ export function useSort<T>(items: T[], options?: UseSortOptions<T>): UseSortRetu
 		const customComparator = comparatorsRef.current?.[activeSortKey];
 		const directionMultiplier = activeSortDirection === 'asc' ? 1 : -1;
 
-		// 1. Decorate (Pre-extract sort keys once per item in a single contiguous pass)
+		// 1. Decorate (Pre-extract sort keys once per item in a single contiguous
+		//    pass). While decorating, track type homogeneity among non-nullish
+		//    values — a homogeneous column lets step 2 skip compareValues'
+		//    per-comparison type-dispatch chain (the dominant sort cost at
+		//    100k+ items).
 		const decorated: Array<DecoratedSortItem<T>> = new Array(len);
+		let allStrings = true;
+		let allNumbers = true;
+		let allDates = true;
+		let allBooleans = true;
 		for (let i = 0; i < len; i++) {
-			const item = items[i]!;
+			const item = items[i] as T;
+			const val = item[activeSortKey];
 			decorated[i] = {
 				item,
-				val: item[activeSortKey],
+				val,
 				index: i,
 			};
+			if (val !== null && val !== undefined) {
+				const type = typeof val;
+				if (type !== 'string') allStrings = false;
+				if (type !== 'number') allNumbers = false;
+				if (type !== 'boolean') allBooleans = false;
+				if (!(val instanceof Date)) allDates = false;
+			}
 		}
 
-		// 2. Sort using pre-extracted values
+		// 2. Sort using pre-extracted values — homogeneous columns get a
+		//    specialized comparator; mixed columns fall back to compareValues.
 		if (customComparator) {
 			decorated.sort((a, b) => {
 				const res = customComparator(a.item, b.item) * directionMultiplier;
 				return res !== 0 ? res : a.index - b.index;
 			});
+		} else if (allDates) {
+			// Pre-extract timestamps once per item — compareValues would call
+			// getTime() twice per comparison.
+			for (let i = 0; i < len; i++) {
+				const entry = decorated[i] as DecoratedSortItem<T>;
+				const val = entry.val;
+				if (val !== null && val !== undefined) {
+					entry.val = (val as Date).getTime();
+				}
+			}
+			decorated.sort(timestampComparator<T>(directionMultiplier));
+		} else if (allNumbers) {
+			decorated.sort(numericComparator<T>(directionMultiplier));
+		} else if (allStrings) {
+			decorated.sort(stringComparator<T>(directionMultiplier));
+		} else if (allBooleans) {
+			decorated.sort(booleanComparator<T>(directionMultiplier));
 		} else {
 			decorated.sort((a, b) => {
 				const valueA = a.val;
