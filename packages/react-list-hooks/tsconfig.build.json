@@ -1,0 +1,20 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"declaration": true,
+		"emitDeclarationOnly": true,
+		"incremental": false,
+		"rootDir": "./src",
+		"outDir": "./dist"
+	},
+	"include": [
+		"src/index.ts",
+		"src/context.ts",
+		"src/use-paginate.ts",
+		"src/use-filter.ts",
+		"src/use-sort.ts",
+		"src/use-list.ts"
+	],
+	"exclude": ["src/tests", "src/test-setup.ts"]
+}

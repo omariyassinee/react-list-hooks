@@ -70,17 +70,19 @@ Requires React >= 18 as a peer dependency.
 This repo is a Bun workspace monorepo:
 
 ```
-packages/lib    — the publishable library (source, tests, build)
-packages/demo   — Vite playground, linked to the lib via workspace:*
+packages/react-list-hooks   — the publishable library (source, tests, build)
+playgrounds/demo            — Vite playground, linked to the lib via workspace:*
 ```
 
 ```bash
 bun install          # install all workspaces
-bun run build        # build the library (packages/lib/dist)
+bun run build        # build the library (packages/react-list-hooks/dist)
 bun run test         # run the test suite
-bun run typecheck    # typecheck with tsgo
+bun run typecheck    # typecheck all workspaces
 bun run dev          # start the demo dev server
 ```
+
+See [`playgrounds/README.md`](./playgrounds/README.md) for the playgrounds.
 
 ---
 

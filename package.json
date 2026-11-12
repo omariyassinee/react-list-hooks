@@ -1,13 +1,16 @@
 {
-	"name": "react-list-hooks-monorepo",
-	"private": true,
-	"workspaces": [
-		"packages/*"
-	],
-	"scripts": {
-		"build": "bun run --filter '@omariyassine/react-list-hooks' build",
-		"test": "bun run --filter '@omariyassine/react-list-hooks' test",
-		"typecheck": "bun run --filter '@omariyassine/react-list-hooks' typecheck",
-		"dev": "bun run --filter 'demo' dev"
-	}
+  "name": "@omariyassine/react-list-hooks-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "playgrounds/*"
+  ],
+  "scripts": {
+    "build": "bun run --filter='@omariyassine/react-list-hooks' build",
+    "typecheck": "bun run --filter='*' typecheck",
+    "typecheck:pkg": "bun run --filter='@omariyassine/react-list-hooks' typecheck",
+    "dev": "bun run --filter='./playgrounds/demo' dev",
+    "test:pkg": "bun run --filter='@omariyassine/react-list-hooks' test",
+    "test:playgrounds": "bun run build && bun run --filter='./playgrounds/*' test"
+  }
 }

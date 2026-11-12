@@ -4,7 +4,7 @@
 >
 > **Re-verification note.** One claim from the initial analysis (mixed `bigint`/`number` NaN ordering) was re-tested and **cleared** — see [Appendix A](#appendix-a-claims-re-verified-and-cleared). The bug list below is the corrected, evidence-backed set: **18 confirmed bugs** (7 critical, 5 medium, 6 minor).
 >
-> **Status: ALL 18 BUGS FIXED.** ✅ Every fix below has been implemented, verified by a new regression suite (`packages/lib/src/tests/regressions.test.ts`, 31 tests), and the full suite (147 tests) passes with a clean typecheck and a verified dual-format build.
+> **Status: ALL 18 BUGS FIXED.** ✅ Every fix below has been implemented, verified by a new regression suite (`packages/react-list-hooks/src/tests/regressions.test.ts`, 31 tests), and the full suite (147 tests) passes with a clean typecheck and a verified dual-format build.
 
 ---
 
