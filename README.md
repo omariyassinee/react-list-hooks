@@ -95,13 +95,13 @@ See [`playgrounds/README.md`](./playgrounds/README.md) for the playgrounds.
 
 The package exports four hooks — three independent primitives that can be used alone, plus a master pipeline hook that composes them together (**Filter → Sort → Paginate**). It also includes first-class React Context providers, consumer hooks, and context factories to eliminate prop-drilling across component trees:
 
-| Hook / Feature | Purpose |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `usePaginate` | Slice an array into pages, navigate with windowed range (`paginationRange`), sync state to the URL, and generate shareable links. |
-| `useSort` | Sort an array with automatic type-aware comparison, Schwartzian transform for 100k+ speed, custom comparators, `isSorting`, and URL sync. |
-| `useFilter` | Filter an array by a global text query and/or structured filters with debouncing, `isFiltering`, `useTransition`, and URL sync. |
-| **`useList`** | **Master pipeline hook** that composes `useFilter` → `useSort` → `usePaginate` into a single call with automatic page-1 reset, unified URL sync, and `resetAll()`. |
-| **Context Providers** | `ListProvider`, `PaginateProvider`, `SortProvider`, and `FilterProvider` with pipeline bridges and fine-grained state/methods hooks to avoid prop-drilling. |
+| Hook / Feature        | Purpose                                                                                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `usePaginate`         | Slice an array into pages, navigate with windowed range (`paginationRange`), sync state to the URL, and generate shareable links.                                  |
+| `useSort`             | Sort an array with automatic type-aware comparison, Schwartzian transform for 100k+ speed, custom comparators, `isSorting`, and URL sync.                          |
+| `useFilter`           | Filter an array by a global text query and/or structured filters with debouncing, `isFiltering`, `useTransition`, and URL sync.                                    |
+| **`useList`**         | **Master pipeline hook** that composes `useFilter` → `useSort` → `usePaginate` into a single call with automatic page-1 reset, unified URL sync, and `resetAll()`. |
+| **Context Providers** | `ListProvider`, `PaginateProvider`, `SortProvider`, and `FilterProvider` with pipeline bridges and fine-grained state/methods hooks to avoid prop-drilling.        |
 
 All hooks are fully typed with generics and work with any object shape.
 
@@ -760,8 +760,8 @@ function DataTable({ data }) {
 | ----------------------- | -------------------------------- | ------------------------------------------------------------------------------- |
 | **Pipeline output**     |                                  |                                                                                 |
 | `data`                  | `UsePaginateReturn<T>`           | The paginate stage result: `{ paginatedItems, state, methods }`.                |
-| `filter`                | `UseFilterReturn<T, K>`          | The filter stage result: `{ filteredItems, state, methods }`.                  |
-| `sort`                  | `UseSortReturn<T>`               | The sort stage result: `{ sortedItems, state, methods }`.                      |
+| `filter`                | `UseFilterReturn<T, K>`          | The filter stage result: `{ filteredItems, state, methods }`.                   |
+| `sort`                  | `UseSortReturn<T>`               | The sort stage result: `{ sortedItems, state, methods }`.                       |
 | **Filter access**       |                                  |                                                                                 |
 | `query`                 | `string`                         | Current global text search query.                                               |
 | `setQuery`              | `(query: string) => void`        | Update the search query. Resets to page 1.                                      |
@@ -912,6 +912,7 @@ import {
 You can use `<ListProvider>` in two ways:
 
 #### 1. Managed Mode (recommended)
+
 Pass your items and options directly as props to `<ListProvider>`. It manages the list pipeline internally:
 
 ```tsx
@@ -1001,6 +1002,7 @@ function PaginationToolbar() {
 ```
 
 #### 2. Value Mode
+
 If you already call `useList()` in a parent component, pass the returned value via the `value` prop:
 
 ```tsx
@@ -1016,6 +1018,7 @@ function ParentComponent({ users }) {
 ```
 
 #### 3. Render-Prop Children
+
 Providers also accept a render function as `children`:
 
 ```tsx
@@ -1040,6 +1043,7 @@ Providers also accept a render function as `children`:
 When you only need pagination, sorting, or filtering independently without the full `useList` pipeline, use the dedicated stage providers:
 
 #### `<PaginateProvider>`
+
 ```tsx
 import {
   PaginateProvider,
@@ -1060,11 +1064,9 @@ const page = usePaginate(products, { pageSize: 20 });
 ```
 
 #### `<SortProvider>`
+
 ```tsx
-import {
-  SortProvider,
-  useSortContext,
-} from "@omariyassine/react-list-hooks";
+import { SortProvider, useSortContext } from "@omariyassine/react-list-hooks";
 
 <SortProvider items={products} initialKey="price" initialDirection="desc">
   <SortHeader />
@@ -1073,6 +1075,7 @@ import {
 ```
 
 #### `<FilterProvider>`
+
 ```tsx
 import {
   FilterProvider,
@@ -1091,12 +1094,12 @@ import {
 
 To optimize re-renders in large component trees, you can subscribe specifically to either `state` or `methods`:
 
-| Stage | Full Context Hook | State-Only Hook | Methods-Only Hook |
-| ----- | ----------------- | --------------- | ----------------- |
-| **List** | `useListContext()` | — | — |
+| Stage        | Full Context Hook      | State-Only Hook      | Methods-Only Hook      |
+| ------------ | ---------------------- | -------------------- | ---------------------- |
+| **List**     | `useListContext()`     | —                    | —                      |
 | **Paginate** | `usePaginateContext()` | `usePaginateState()` | `usePaginateMethods()` |
-| **Sort** | `useSortContext()` | `useSortState()` | `useSortMethods()` |
-| **Filter** | `useFilterContext()` | `useFilterState()` | `useFilterMethods()` |
+| **Sort**     | `useSortContext()`     | `useSortState()`     | `useSortMethods()`     |
+| **Filter**   | `useFilterContext()`   | `useFilterState()`   | `useFilterMethods()`   |
 
 Components that only trigger actions (like a "Next Page" button or a "Sort by Price" header) can consume `methods` without re-rendering when state values change:
 
@@ -1141,6 +1144,7 @@ function ProductControls() {
 ```
 
 Available factories:
+
 - `createListContext<T, K>()`
 - `createPaginateContext<T>()`
 - `createSortContext<T>()`
