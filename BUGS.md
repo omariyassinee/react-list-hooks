@@ -1,6 +1,6 @@
 # Bug Report & Fix Plan — `@omariyassine/react-list-hooks` v0.3.0
 
-> **Method.** Every bug below was verified at runtime, not just by reading code: for each suspected defect I wrote a temporary test that *asserts the correct behavior* — a failing test is a confirmed bug, and the failure output doubles as the reproduction. All temporary tests were removed afterwards; the shipped suite (116 tests) passes untouched. Line numbers refer to the current `main` (commit `9ab1888`).
+> **Method.** Every bug below was verified at runtime, not just by reading code: for each suspected defect I wrote a temporary test that _asserts the correct behavior_ — a failing test is a confirmed bug, and the failure output doubles as the reproduction. All temporary tests were removed afterwards; the shipped suite (116 tests) passes untouched. Line numbers refer to the current `main` (commit `9ab1888`).
 >
 > **Re-verification note.** One claim from the initial analysis (mixed `bigint`/`number` NaN ordering) was re-tested and **cleared** — see [Appendix A](#appendix-a-claims-re-verified-and-cleared). The bug list below is the corrected, evidence-backed set: **18 confirmed bugs** (7 critical, 5 medium, 6 minor).
 >
@@ -10,26 +10,26 @@
 
 ## Summary
 
-| # | Severity | Title | Location | Status |
-|---|----------|-------|----------|--------|
-| 1 | 🔴 Critical | CJS build declared but never emitted | `tsup.config.ts:5`, `package.json` | ✅ Fixed |
-| 2 | 🔴 Critical | `keepOtherParams: false` lets pipeline stages wipe each other's URL state | `use-list.ts`, all hooks | ✅ Fixed |
-| 3 | 🔴 Critical | Unstable default `{}` re-runs the filter URL effect every render | `use-list.ts:42` | ✅ Fixed |
-| 4 | 🔴 Critical | Cleared filters leave stale URL params that resurrect on refresh | `use-filter.ts:176-186` | ✅ Fixed |
-| 5 | 🔴 Critical | Filter values lose their type through the URL round-trip | `use-filter.ts:57`, `isMatch` | ✅ Fixed |
-| 6 | 🔴 Critical | "Omit to disable" contract violated; sort indicator reports a sort that isn't applied | `use-list.ts:116,135` | ✅ Fixed |
-| 7 | 🔴 Critical | `paginationRange` off-by-one drops the current page's sibling (and can hide the current page) | `use-paginate.ts:28-67` | ✅ Fixed |
-| 8 | 🟠 Medium | `syncPageSize: false` honored on only 1 of 3 code paths | `use-paginate.ts:81,173,252` | ✅ Fixed |
-| 9 | 🟠 Medium | Sort URL syncs live state; filter syncs debounced state | `use-sort.ts:239` | ✅ Fixed |
-| 10 | 🟠 Medium | `usePaginate` writes `?page=1&pageSize=10` on mount (and pushes a history entry) | `use-paginate.ts:165` | ✅ Fixed |
-| 11 | 🟠 Medium | Filter URL read path ignores params the write path emits | `use-filter.ts:44-66` | ✅ Fixed |
-| 12 | 🟠 Medium | Dynamic `searchFields` changes never re-filter | `use-filter.ts:276,309` | ✅ Fixed |
-| 13 | 🟡 Minor | `clearFilters()` resets pagination even with nothing active | `use-filter.ts:264`, `use-list.ts:159` | ✅ Fixed |
-| 14 | 🟡 Minor | Debounced sort resets the page before the sort applies | `use-list.ts:159-184` | ✅ Fixed |
-| 15 | 🟡 Minor | `resetAll()` doesn't restore the initial `pageSize` | `use-list.ts:201` | ✅ Fixed |
-| 16 | 🟡 Minor | Docs: "Omit `paginate` … returns all items" — it paginates at 10 | `types/index.ts:218` | ✅ Fixed |
-| 17 | 🟡 Minor | `parseInt` accepts trailing garbage (`?page=2abc` → 2) | `use-paginate.ts:74`, `use-list.ts:22` | ✅ Fixed |
-| 18 | 🟡 Minor | Demo depends on a stale 0.2.2 tarball | `demo/package.json:13` | ✅ Fixed |
+| #   | Severity    | Title                                                                                         | Location                               | Status   |
+| --- | ----------- | --------------------------------------------------------------------------------------------- | -------------------------------------- | -------- |
+| 1   | 🔴 Critical | CJS build declared but never emitted                                                          | `tsup.config.ts:5`, `package.json`     | ✅ Fixed |
+| 2   | 🔴 Critical | `keepOtherParams: false` lets pipeline stages wipe each other's URL state                     | `use-list.ts`, all hooks               | ✅ Fixed |
+| 3   | 🔴 Critical | Unstable default `{}` re-runs the filter URL effect every render                              | `use-list.ts:42`                       | ✅ Fixed |
+| 4   | 🔴 Critical | Cleared filters leave stale URL params that resurrect on refresh                              | `use-filter.ts:176-186`                | ✅ Fixed |
+| 5   | 🔴 Critical | Filter values lose their type through the URL round-trip                                      | `use-filter.ts:57`, `isMatch`          | ✅ Fixed |
+| 6   | 🔴 Critical | "Omit to disable" contract violated; sort indicator reports a sort that isn't applied         | `use-list.ts:116,135`                  | ✅ Fixed |
+| 7   | 🔴 Critical | `paginationRange` off-by-one drops the current page's sibling (and can hide the current page) | `use-paginate.ts:28-67`                | ✅ Fixed |
+| 8   | 🟠 Medium   | `syncPageSize: false` honored on only 1 of 3 code paths                                       | `use-paginate.ts:81,173,252`           | ✅ Fixed |
+| 9   | 🟠 Medium   | Sort URL syncs live state; filter syncs debounced state                                       | `use-sort.ts:239`                      | ✅ Fixed |
+| 10  | 🟠 Medium   | `usePaginate` writes `?page=1&pageSize=10` on mount (and pushes a history entry)              | `use-paginate.ts:165`                  | ✅ Fixed |
+| 11  | 🟠 Medium   | Filter URL read path ignores params the write path emits                                      | `use-filter.ts:44-66`                  | ✅ Fixed |
+| 12  | 🟠 Medium   | Dynamic `searchFields` changes never re-filter                                                | `use-filter.ts:276,309`                | ✅ Fixed |
+| 13  | 🟡 Minor    | `clearFilters()` resets pagination even with nothing active                                   | `use-filter.ts:264`, `use-list.ts:159` | ✅ Fixed |
+| 14  | 🟡 Minor    | Debounced sort resets the page before the sort applies                                        | `use-list.ts:159-184`                  | ✅ Fixed |
+| 15  | 🟡 Minor    | `resetAll()` doesn't restore the initial `pageSize`                                           | `use-list.ts:201`                      | ✅ Fixed |
+| 16  | 🟡 Minor    | Docs: "Omit `paginate` … returns all items" — it paginates at 10                              | `types/index.ts:218`                   | ✅ Fixed |
+| 17  | 🟡 Minor    | `parseInt` accepts trailing garbage (`?page=2abc` → 2)                                        | `use-paginate.ts:74`, `use-list.ts:22` | ✅ Fixed |
+| 18  | 🟡 Minor    | Demo depends on a stale 0.2.2 tarball                                                         | `demo/package.json:13`                 | ✅ Fixed |
 
 ---
 
@@ -85,10 +85,12 @@ tsup emits `.cjs`/`.d.cts` automatically for the CJS format and per-entry `use-*
 **Details.** Every stage's URL-sync effect rebuilds the query string from scratch when `keepOtherParams` is `false`:
 
 ```ts
-const searchParams = keepOtherParams ? new URLSearchParams(currentSearchParams) : new URLSearchParams();
+const searchParams = keepOtherParams
+  ? new URLSearchParams(currentSearchParams)
+  : new URLSearchParams();
 ```
 
-Inside `useList`, the three stages run as siblings in one component, so "params I don't know about" includes **the other stages' params**. Combined with Bug 3 (the filter effect re-runs on *every* render), the stages repeatedly clobber each other; the final URL is decided by effect order, not by user intent.
+Inside `useList`, the three stages run as siblings in one component, so "params I don't know about" includes **the other stages' params**. Combined with Bug 3 (the filter effect re-runs on _every_ render), the stages repeatedly clobber each other; the final URL is decided by effect order, not by user intent.
 
 **Verified evidence.**
 
@@ -98,7 +100,7 @@ Inside `useList`, the three stages run as siblings in one component, so "params 
 
 **Suggested fix.** Two viable directions:
 
-- **Tactical (minimal diff):** teach each stage which params the *pipeline* owns. Add an internal `preserveParams?: string[]` field to the per-hook URL-sync options; `useList` populates it with the full set of pipeline-owned names (`q`, mapped filter params, `sortBy`, `sortDir`, `page`, `pageSize`). When `keepOtherParams: false`, a stage starts from `new URLSearchParams()` but re-copies only params listed in `preserveParams` (excluding its own), then sets its own. Standalone hooks keep today's semantics (empty `preserveParams`).
+- **Tactical (minimal diff):** teach each stage which params the _pipeline_ owns. Add an internal `preserveParams?: string[]` field to the per-hook URL-sync options; `useList` populates it with the full set of pipeline-owned names (`q`, mapped filter params, `sortBy`, `sortDir`, `page`, `pageSize`). When `keepOtherParams: false`, a stage starts from `new URLSearchParams()` but re-copies only params listed in `preserveParams` (excluding its own), then sets its own. Standalone hooks keep today's semantics (empty `preserveParams`).
 - **Strategic (cleaner, larger diff):** when running inside `useList`, disable per-stage URL sync entirely and give `useList` a single unified effect that composes the full URL from all three stages' state in one write. This eliminates cross-stage clobbering by construction, removes 2 of 3 `URLSearchParams` parses per update, and makes `historyMode: 'push'` produce one entry per user action instead of up to three.
 
 The strategic fix also naturally resolves Bug 10's multi-write behavior for `useList`.
@@ -116,7 +118,7 @@ The strategic fix also naturally resolves Bug 10's multi-write behavior for `use
 **Details.**
 
 ```ts
-const filterParamMap = urlSyncConfig.filterParamMap ?? {};   // ← new object identity every render
+const filterParamMap = urlSyncConfig.filterParamMap ?? {}; // ← new object identity every render
 ```
 
 `filterParamMap` feeds the `filterUrlSync` memo's dependency array, so the memo output is unstable → `useFilter`'s internal `paramMap` memo recomputes → the URL-sync effect (which lists `paramMap` in its deps) **re-runs on every single render of the host component**. The effect's URL-unchanged guard prevents actual history writes, but the wasted work is real: two `URLSearchParams` constructions per render.
@@ -133,7 +135,7 @@ const EMPTY_PARAM_MAP: Record<string, string> = {};
 const filterParamMap = urlSyncConfig.filterParamMap ?? EMPTY_PARAM_MAP;
 ```
 
-(Alternatively `useMemo`, but the module constant is simpler and can't be defeated by a remount.) The same defensive pattern is worth applying to any other `?? {}` / `?? []` defaults that flow into dependency arrays. Note the standalone `useFilter` is only affected if the *caller* passes an inline `paramMap` literal — that's ordinary React prop-identity behavior and belongs in docs rather than code.
+(Alternatively `useMemo`, but the module constant is simpler and can't be defeated by a remount.) The same defensive pattern is worth applying to any other `?? {}` / `?? []` defaults that flow into dependency arrays. Note the standalone `useFilter` is only affected if the _caller_ passes an inline `paramMap` literal — that's ordinary React prop-identity behavior and belongs in docs rather than code.
 
 **Regression test.** Instrument `URLSearchParams` (or the effect via a spy); re-render an idle `useList` 3×; assert 0 additional constructions.
 
@@ -152,11 +154,15 @@ for (const [filterKey, mappedParam] of Object.entries(paramMap)) { … searchPar
 for (const key of Object.keys(filters)) { … if (filters[key] === undefined) searchParams.delete(paramName) }
 ```
 
-Both loops only visit keys that exist in `paramMap` **or still exist in `filters`**. But `clearFilter` *deletes* the key from state:
+Both loops only visit keys that exist in `paramMap` **or still exist in `filters`**. But `clearFilter` _deletes_ the key from state:
 
 ```ts
 const clearFilter = useCallback((key: ActualKey) => {
-  setFilters((prev) => { const next = { ...prev }; delete next[key]; return next; });
+  setFilters((prev) => {
+    const next = { ...prev };
+    delete next[key];
+    return next;
+  });
 }, []);
 ```
 
@@ -168,7 +174,7 @@ So for an **unmapped** key (no `paramMap` entry), once cleared, the key is gone 
 2. `clearFilter('category')` → URL **still** `?category=Audio` ✗
 3. Refresh → `getInitialFilters` sees `?category=Audio` and (if the key is declared in `initialFilters`) restores `filters = { category: 'Audio' }` — **the filter comes back from the dead**.
 
-The same leak applies to `clearAll()` and to `setFilter(key, '')` for unmapped keys. (For *mapped* keys the first loop saves the day, which is why this survives casual testing.)
+The same leak applies to `clearAll()` and to `setFilter(key, '')` for unmapped keys. (For _mapped_ keys the first loop saves the day, which is why this survives casual testing.)
 
 **Suggested fix.** Track the param names this hook has previously written, and delete any that are no longer active:
 
@@ -182,7 +188,7 @@ for (const name of writtenParamNamesRef.current) {
 writtenParamNamesRef.current = activeParamNames;
 ```
 
-This is O(written) per update, handles mapped *and* unmapped keys, and also cleans up params left over from a previous `paramMap` configuration.
+This is O(written) per update, handles mapped _and_ unmapped keys, and also cleans up params left over from a previous `paramMap` configuration.
 
 **Regression test.** `setFilter('category', 'Audio')` → `clearFilter('category')` → assert `window.location.search` no longer contains `category`.
 
@@ -218,12 +224,20 @@ URL sync for non-string filters is effectively **write-only**.
 1. **Coerce in `isMatch`** (symmetric with the existing Date branch):
 
 ```ts
-if (typeof itemVal === 'number' && typeof filterVal === 'string' && filterVal.trim() !== '') {
+if (
+  typeof itemVal === "number" &&
+  typeof filterVal === "string" &&
+  filterVal.trim() !== ""
+) {
   const n = Number(filterVal);
-  if (Number.isFinite(n) && String(n) === filterVal.trim()) return itemVal === n;
+  if (Number.isFinite(n) && String(n) === filterVal.trim())
+    return itemVal === n;
 }
-if (typeof itemVal === 'boolean' && (filterVal === 'true' || filterVal === 'false')) {
-  return itemVal === (filterVal === 'true');
+if (
+  typeof itemVal === "boolean" &&
+  (filterVal === "true" || filterVal === "false")
+) {
+  return itemVal === (filterVal === "true");
 }
 ```
 
@@ -241,12 +255,16 @@ The `String(n) === filterVal` guard keeps matching strict (rejects `'1e2'`, `' 1
 
 **Location:** `use-list.ts:116` (`sortInput`), `use-list.ts:135-137` (`paginateInput`), `types/index.ts:214-218` (the contract)
 
-**Details.** The documented contract says *"Omit to disable filtering/sorting."* But `useList` passes the unified `urlSync` config to **all three stages unconditionally**, so an omitted stage still reads its params from the URL on mount. Worse, for sort:
+**Details.** The documented contract says _"Omit to disable filtering/sorting."_ But `useList` passes the unified `urlSync` config to **all three stages unconditionally**, so an omitted stage still reads its params from the URL on mount. Worse, for sort:
 
 ```ts
 const sortInput = options?.sort !== undefined ? filteredItems : items;
 const paginateInput =
-  options?.sort !== undefined ? sortedItems : options?.filter !== undefined ? filteredItems : items;
+  options?.sort !== undefined
+    ? sortedItems
+    : options?.filter !== undefined
+      ? filteredItems
+      : items;
 ```
 
 When `options.sort` is `undefined`, `useSort` still initializes from the URL (`sortKey: 'price'`) — but `paginateInput` takes the `filteredItems`/`items` branch, so **the sorted output is discarded**. The returned `sortKey`/`sortDirection`/`getSortIndicator` then describe a sort that is not applied to the data.
@@ -282,22 +300,22 @@ Additionally, make `paginateInput` consume `sortedItems` whenever the sort hook 
 
 ```ts
 if (!showLeftEllipsis && showRightEllipsis) {
-  const leftItemCount = safeBoundaries + 2 * safeSiblings + 1;   // ← should be +2
+  const leftItemCount = safeBoundaries + 2 * safeSiblings + 1; // ← should be +2
   const leftRange = range(1, leftItemCount);
-  return [...leftRange, 'ellipsis', ...endPages];
+  return [...leftRange, "ellipsis", ...endPages];
 }
 ```
 
-The reference algorithm this API mirrors (MUI `usePagination`) clamps the sibling window with `siblingsStart`/`siblingsEnd` so the current page always keeps both siblings near boundaries. This implementation instead extends the *flat* range by one too few, so the current page's outer sibling is pushed behind the ellipsis. With `siblingCount: 0` it gets worse: the flat range is `boundaries + 1` items, which can end **before the current page**, hiding the current page itself behind the ellipsis.
+The reference algorithm this API mirrors (MUI `usePagination`) clamps the sibling window with `siblingsStart`/`siblingsEnd` so the current page always keeps both siblings near boundaries. This implementation instead extends the _flat_ range by one too few, so the current page's outer sibling is pushed behind the ellipsis. With `siblingCount: 0` it gets worse: the flat range is `boundaries + 1` items, which can end **before the current page**, hiding the current page itself behind the ellipsis.
 
 **Verified evidence** (10 pages, `siblingCount: 1`, `boundaryCount: 1` unless noted):
 
-| Case | This repo | MUI reference |
-|------|-----------|----------------|
-| Page 4 of 10 | `1 2 3 4 … 10` — **page 5 missing** | `1 2 3 4 5 … 10` |
-| Page 7 of 10 | `1 … 7 8 9 10` — **page 6 missing** | `1 … 6 7 8 9 10` |
-| Page 3 of 6, `siblingCount: 0` | `1 2 … 6` — **current page 3 hidden behind the ellipsis** | `1 2 3 … 6` |
-| Page 2 of 6, `siblingCount: 0` | `1 2 … 6` — page 3 hidden | `1 2 3 … 6` |
+| Case                           | This repo                                                 | MUI reference    |
+| ------------------------------ | --------------------------------------------------------- | ---------------- |
+| Page 4 of 10                   | `1 2 3 4 … 10` — **page 5 missing**                       | `1 2 3 4 5 … 10` |
+| Page 7 of 10                   | `1 … 7 8 9 10` — **page 6 missing**                       | `1 … 6 7 8 9 10` |
+| Page 3 of 6, `siblingCount: 0` | `1 2 … 6` — **current page 3 hidden behind the ellipsis** | `1 2 3 … 6`      |
+| Page 2 of 6, `siblingCount: 0` | `1 2 … 6` — page 3 hidden                                 | `1 2 3 … 6`      |
 
 **Suggested fix.** Port MUI's clamping math (from `mui/material-ui` `usePagination.js`), keeping the existing early-return for short lists:
 
@@ -315,10 +333,16 @@ function computePaginationRange(
   if (totalPages <= totalSlots) return range(1, totalPages);
 
   const startPages = range(1, Math.min(safeBoundaries, totalPages));
-  const endPages = range(Math.max(totalPages - safeBoundaries + 1, safeBoundaries + 1), totalPages);
+  const endPages = range(
+    Math.max(totalPages - safeBoundaries + 1, safeBoundaries + 1),
+    totalPages,
+  );
 
   const siblingsStart = Math.max(
-    Math.min(currentPage - safeSiblings, totalPages - safeBoundaries - safeSiblings * 2 - 1),
+    Math.min(
+      currentPage - safeSiblings,
+      totalPages - safeBoundaries - safeSiblings * 2 - 1,
+    ),
     safeBoundaries + 2,
   );
   const siblingsEnd = Math.min(
@@ -329,13 +353,13 @@ function computePaginationRange(
   return [
     ...startPages,
     ...(siblingsStart > safeBoundaries + 2
-      ? ['ellipsis']
+      ? ["ellipsis"]
       : safeBoundaries + 1 < totalPages - safeBoundaries
         ? [safeBoundaries + 1]
         : []),
     ...range(siblingsStart, siblingsEnd),
     ...(siblingsEnd < totalPages - safeBoundaries - 1
-      ? ['ellipsis']
+      ? ["ellipsis"]
       : totalPages - safeBoundaries > safeBoundaries
         ? [totalPages - safeBoundaries]
         : []),
@@ -360,12 +384,12 @@ The nested ternaries replace a hidden ellipsis with the adjacent filler page (MU
 
 **Details.** The flag means "pageSize is app state, not URL state". Three paths disagree:
 
-| Path | Respects flag? |
-|------|----------------|
-| URL-sync write effect (`if (syncPageSize) searchParams.set(...)`) | ✅ |
-| popstate handler (`if (syncPageSize) { … read pageSize … }`) | ✅ |
-| **Mount read** — `getInitialPageSize` unconditionally reads `?pageSize=` | ❌ |
-| **`getShareableUrl`** — unconditionally `searchParams.set(pageSizeParam, String(ps))` | ❌ |
+| Path                                                                                  | Respects flag? |
+| ------------------------------------------------------------------------------------- | -------------- |
+| URL-sync write effect (`if (syncPageSize) searchParams.set(...)`)                     | ✅             |
+| popstate handler (`if (syncPageSize) { … read pageSize … }`)                          | ✅             |
+| **Mount read** — `getInitialPageSize` unconditionally reads `?pageSize=`              | ❌             |
+| **`getShareableUrl`** — unconditionally `searchParams.set(pageSizeParam, String(ps))` | ❌             |
 
 **Verified evidence.**
 
@@ -409,7 +433,7 @@ if (activeSortKey !== null && activeSortDirection !== null) {
 }, [activeSortKey, activeSortDirection, isUrlSyncEnabled, sortKeyParam, directionParam, historyMode, keepOtherParams]);
 ```
 
-**Regression test.** With `debounceMs: 500`, assert the URL does *not* contain `sortBy` immediately after `setSort`, and does after the debounce elapses.
+**Regression test.** With `debounceMs: 500`, assert the URL does _not_ contain `sortBy` immediately after `setSort`, and does after the debounce elapses.
 
 ---
 
@@ -428,7 +452,7 @@ if (activeSortKey !== null && activeSortDirection !== null) {
 ```ts
 const isFirstSyncRef = useRef(true);
 // inside the effect, when writing:
-const mode = isFirstSyncRef.current ? 'replace' : historyMode;
+const mode = isFirstSyncRef.current ? "replace" : historyMode;
 isFirstSyncRef.current = false;
 ```
 
@@ -447,8 +471,12 @@ This preserves the useful "normalize the URL on mount" behavior without pollutin
 **Details.** The write path emits **every active filter**, using `paramMap[key] ?? key` as the param name. The read path only restores a param if:
 
 ```ts
-if (urlKey === mappedName) { result[key] = urlVal; }   // key must be in paramMap
-if (urlKey in initial) { result[urlKey] = urlVal; }    // or pre-declared in initialFilters
+if (urlKey === mappedName) {
+  result[key] = urlVal;
+} // key must be in paramMap
+if (urlKey in initial) {
+  result[urlKey] = urlVal;
+} // or pre-declared in initialFilters
 ```
 
 So a filter the hook itself wrote (`?category=Audio`, unmapped) is **ignored on refresh and on popstate** unless the consumer happened to pre-declare the key in `initialFilters`. Write and read are asymmetric.
@@ -464,7 +492,7 @@ So a filter the hook itself wrote (`?category=Audio`, unmapped) is **ignored on 
    ```
    and honor it in `getInitialFilters` (treat each listed key like an `initialFilters` key).
 2. In `useList`, auto-populate `restoreKeys` from `options.filter?.initialFilters` and `paramMap` so the common pipeline case round-trips out of the box.
-3. Document the rule: *a filter round-trips through the URL only if its key is declared in `paramMap`, `initialFilters`, or `restoreKeys`.*
+3. Document the rule: _a filter round-trips through the URL only if its key is declared in `paramMap`, `initialFilters`, or `restoreKeys`._
 
 **Regression test.** `useFilter` with `restoreKeys: ['category']` on `?category=Audio` → `filters` equals `{ category: 'Audio' }` and `filteredItems` is filtered.
 
@@ -480,12 +508,12 @@ So a filter the hook itself wrote (`?category=Audio`, unmapped) is **ignored on 
 
 ```ts
 const resolvedSearchFields = useMemo<Array<keyof T>>(() => {
-  if (searchFieldsRef.current) return searchFieldsRef.current;   // ref read…
+  if (searchFieldsRef.current) return searchFieldsRef.current; // ref read…
   // …auto-detect from items
-}, [items]);                                                       // …but memo keyed on [items] only
+}, [items]); // …but memo keyed on [items] only
 
 // inside filteredItems:
-const fieldsToSearch = searchFieldsRef.current ?? resolvedSearchFields;  // ref read again
+const fieldsToSearch = searchFieldsRef.current ?? resolvedSearchFields; // ref read again
 // deps: [items, appliedQuery, filters, resolvedSearchFields]
 ```
 
@@ -526,7 +554,9 @@ const fieldsToSearch = resolvedSearchFields;
 **Details.** `clearFilters` unconditionally produces a fresh identity:
 
 ```ts
-const clearFilters = useCallback(() => { setFilters({}); }, []);
+const clearFilters = useCallback(() => {
+  setFilters({});
+}, []);
 ```
 
 `useList`'s auto-reset effect compares by identity (`prevFiltersRef.current !== filters`), so even a no-op clear triggers `goToStart()`.
@@ -541,7 +571,7 @@ const clearFilters = useCallback(() => {
 }, []);
 ```
 
-Apply the same guard inside `clearAll` (skip the `setFilters({})` when empty) and consider an existence check in `clearFilter`. Alternatively, make `useList`'s effect compare filter *contents* — but the identity guards in the hooks are cheaper and benefit standalone users too.
+Apply the same guard inside `clearAll` (skip the `setFilters({})` when empty) and consider an existence check in `clearFilter`. Alternatively, make `useList`'s effect compare filter _contents_ — but the identity guards in the hooks are cheaper and benefit standalone users too.
 
 **Regression test.** Page 2, no active filters, `clearFilters()` → assert still page 2.
 
@@ -553,11 +583,11 @@ Apply the same guard inside `clearAll` (skip the `setFilters({})` when empty) an
 
 **Location:** `use-list.ts:159-184` (reset effect tracks live `sortKey`/`sortDirection`)
 
-**Details.** The reset effect keys on the **live** sort state, which flips immediately when `setSort` is called — but with `debounceMs` the data doesn't reorder until the debounce fires. The user is yanked to page 1 while still looking at the *old* ordering. (`useFilter` has the same shape for `query`, though for text search an immediate reset is arguably the desired UX; for sort it clearly isn't.)
+**Details.** The reset effect keys on the **live** sort state, which flips immediately when `setSort` is called — but with `debounceMs` the data doesn't reorder until the debounce fires. The user is yanked to page 1 while still looking at the _old_ ordering. (`useFilter` has the same shape for `query`, though for text search an immediate reset is arguably the desired UX; for sort it clearly isn't.)
 
 **Verified evidence.** `useList(many, { sort: { debounceMs: 500 }, paginate: { initialPage: 3 } })` → `setSort('price')` → page is **1** immediately, with `isProcessing: true` and the data still unsorted.
 
-**Suggested fix.** Reset when the *applied* pipeline inputs change. `useSort` already computes `activeSortKey`/`activeSortDirection` internally — expose them (and `useFilter`'s `appliedQuery`) in the hooks' returns, then:
+**Suggested fix.** Reset when the _applied_ pipeline inputs change. `useSort` already computes `activeSortKey`/`activeSortDirection` internally — expose them (and `useFilter`'s `appliedQuery`) in the hooks' returns, then:
 
 ```ts
 // use-list.ts reset effect — track applied values:
@@ -584,11 +614,17 @@ const sortKeyChanged = prevActiveSortKeyRef.current !== activeSortKey;
 
 ```ts
 // use-paginate.ts
-const initialPageSizeRef = useRef(pageSize);   // captured after state init
-const resetPageSize = useCallback(() => setPageSizeState(initialPageSizeRef.current), []);
+const initialPageSizeRef = useRef(pageSize); // captured after state init
+const resetPageSize = useCallback(
+  () => setPageSizeState(initialPageSizeRef.current),
+  [],
+);
 // use-list.ts
 const resetAll = useCallback(() => {
-  rawClearAll(); rawClearSort(); data.goToStart(); data.resetPageSize();
+  rawClearAll();
+  rawClearSort();
+  data.goToStart();
+  data.resetPageSize();
 }, [rawClearAll, rawClearSort, data]);
 ```
 
@@ -610,7 +646,7 @@ But omitting `paginate` runs `usePaginate` with the default `pageSize: 10`. The 
 
 **Suggested fix.** Decide which side is the contract:
 
-- **Docs-only fix (safe, recommended now):** reword to *"Omit to use default pagination (`pageSize: 10`)."*
+- **Docs-only fix (safe, recommended now):** reword to _"Omit to use default pagination (`pageSize: 10`)."_
 - **Behavior fix (breaking, consider for 0.4.0):** honor the promise — when `options.paginate` is omitted, run `usePaginate` in a disabled mode (`pageSize = totalItems`, `totalPages = 1`, `paginationRange = [1]`), or accept an explicit `paginate: false` opt-out. If chosen, update the two tests that assert the current default-pageSize behavior.
 
 **Regression test.** N/A for the docs fix; for the behavior fix, assert `data.length === totalItems` and `totalPages === 1` when `paginate` is omitted.
@@ -632,8 +668,8 @@ But omitting `paginate` runs `usePaginate` with the default `pageSize: 10`. The 
 ```ts
 function getUrlParam(key: string): number | null {
   // …
-  const num = Number(val);            // NaN for any trailing garbage
-  if (val.trim() === '' || !Number.isInteger(num) || num < 1) return null;
+  const num = Number(val); // NaN for any trailing garbage
+  if (val.trim() === "" || !Number.isInteger(num) || num < 1) return null;
   return num;
 }
 ```
@@ -688,7 +724,7 @@ The monorepo source is at **0.3.0** (with `useList`, which the demo showcases). 
 
 **Claim.** "The bigint/number NaN branches return `±1` without applying `directionMultiplier` — inconsistent with the pure-number NaN handling."
 
-**Re-verification.** The pure-number branch *also* hardcodes its NaN returns (`if (isANaN) return 1; if (isBNaN) return -1;`) — the missing multiplier is precisely what produces NaNs-last-in-**both**-directions, and the bigint-mixed branches do the same. Runtime check with `[{v:1n},{v:NaN},{v:2n},{v:3}]`:
+**Re-verification.** The pure-number branch _also_ hardcodes its NaN returns (`if (isANaN) return 1; if (isBNaN) return -1;`) — the missing multiplier is precisely what produces NaNs-last-in-**both**-directions, and the bigint-mixed branches do the same. Runtime check with `[{v:1n},{v:NaN},{v:2n},{v:3}]`:
 
 - `asc` → `[1, 2, 3, NaN]`
 - `desc` → `[3, 2, 1, NaN]`
@@ -713,4 +749,4 @@ The original report described the `siblingCount: 0` ellipsis behavior as "emits 
 8. **Bugs 8–12** — consistency fixes, each small and isolated.
 9. **Bugs 13–18** — polish; the demo workspace link (18) is worth doing early if the demo is used for manual verification of the other fixes.
 
-Each fix should land with a regression test asserting the *correct* behavior (the verification scenarios above are ready-made templates), and the full 116-test suite must stay green throughout.
+Each fix should land with a regression test asserting the _correct_ behavior (the verification scenarios above are ready-made templates), and the full 116-test suite must stay green throughout.
