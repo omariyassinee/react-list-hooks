@@ -10,7 +10,10 @@
     "typecheck": "bun run --filter='*' typecheck",
     "typecheck:pkg": "bun run --filter='@omariyassine/react-list-hooks' typecheck",
     "dev": "bun run --filter='./playgrounds/demo' dev",
+    "test": "bun run test:pkg && bun run test:playgrounds",
     "test:pkg": "bun run --filter='@omariyassine/react-list-hooks' test",
-    "test:playgrounds": "bun run build && bun run --filter='./playgrounds/*' test"
+    "test:playgrounds": "bun run build && bun run --filter='./playgrounds/*' test",
+    "pack:pkg": "bun run --filter='@omariyassine/react-list-hooks' pack",
+    "publish:pkg": "bun run --filter='@omariyassine/react-list-hooks' publish"
   }
 }

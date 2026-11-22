@@ -1,40 +1,44 @@
 {
-	"include": ["src", "./build.ts"],
-	"exclude": ["node_modules", "dist", "coverage"],
-	"compilerOptions": {
-		// Environment setup & latest features
-		"lib": ["ESNext", "DOM"],
-		"target": "ESNext",
-		"module": "Preserve",
-		"moduleDetection": "force",
-		"jsx": "react-jsx",
-		"allowJs": true,
-		"types": ["bun"],
-		"rootDir": "./",
+  "include": ["src", "scripts/build.ts", "tests", "bench", "scripts"],
+  "exclude": ["node_modules", "dist", "coverage"],
+  "compilerOptions": {
+    // Environment setup & latest features
+    "paths": {
+      "@/*": ["./src/*"]
+    },
 
-		// Bundler mode
-		"moduleResolution": "bundler",
-		"allowImportingTsExtensions": false,
-		"verbatimModuleSyntax": true,
-		"noEmit": false,
+    "lib": ["ESNext", "DOM"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "types": ["bun"],
+    "rootDir": "./",
 
-		// Best practices
-		"strict": true,
-		"skipLibCheck": true,
-		"noFallthroughCasesInSwitch": true,
-		"noUncheckedIndexedAccess": true,
-		"noImplicitOverride": true,
+    // Bundler mode
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "verbatimModuleSyntax": true,
+    "noEmit": false,
 
-		// Performance optimizations
-		"incremental": true,
-		"tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo",
-		"isolatedModules": true,
-		"sourceMap": false,
-		"declarationMap": false,
+    // Best practices
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
 
-		// Some stricter flags (disabled by default)
-		"noUnusedLocals": false,
-		"noUnusedParameters": false,
-		"noPropertyAccessFromIndexSignature": false
-	}
+    // Performance optimizations
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo",
+    "isolatedModules": true,
+    "sourceMap": false,
+    "declarationMap": false,
+
+    // Some stricter flags (disabled by default)
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noPropertyAccessFromIndexSignature": false
+  }
 }

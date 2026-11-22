@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from "bun:test";
+
 import { renderHook, act } from "@testing-library/react";
 
-import { usePaginate } from "../use-paginate";
-import { useFilter } from "../use-filter";
-import { useSort } from "../use-sort";
-import { useList } from "../use-list";
+import { usePaginate } from "@/use-paginate";
+import { useFilter } from "@/use-filter";
+import { useSort } from "@/use-sort";
+import { useList } from "@/use-list";
 
 // ─── Shared fixtures ─────────────────────────────────────────────────────────
 

@@ -46,10 +46,13 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun ./build.ts && tsgo -p tsconfig.build.json",
+    "build": "bun ./scripts/build.ts && tsrs -p tsconfig.build.json",
     "test": "bun test",
+    "format": "bun fmt",
     "typecheck": "bunx @typescript/native-preview --noEmit",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "pack": "bun pm pack",
+    "publish": "npm publish --access public"
   },
   "peerDependencies": {
     "react": ">=18"

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "bun:test";
+
 import { renderHook, act } from "@testing-library/react";
-import { useList } from "../use-list";
+
+import { useList } from "@/use-list";
 
 interface Product {
   id: number;
